@@ -11,13 +11,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 class XboxAuthManager(private val context: Context) {
 
@@ -77,7 +74,7 @@ class XboxAuthManager(private val context: Context) {
                 _authState.value = XboxAuthState.Authenticating
                 Logger.i("XboxAuth", "Requesting Microsoft Device Code...")
 
-                // Request device code
+                // Request device code from Microsoft OAuth 2.0 endpoint
                 val deviceCodeUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")
                 val conn = deviceCodeUrl.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -90,7 +87,8 @@ class XboxAuthManager(private val context: Context) {
                 val responseCode = conn.responseCode
                 if (responseCode !in 200..299) {
                     val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "Error $responseCode"
-                    _authState.value = XboxAuthState.Error("Device code error: $err")
+                    Logger.e("XboxAuth", "Device code endpoint error: $err")
+                    _authState.value = XboxAuthState.Error("Device code request failed ($responseCode)")
                     return@launch
                 }
 
@@ -116,17 +114,18 @@ class XboxAuthManager(private val context: Context) {
 
             } catch (e: Exception) {
                 Logger.e("XboxAuth", "Device code flow failed", e)
-                _authState.value = XboxAuthState.Error("Flow error: ${e.message}")
+                _authState.value = XboxAuthState.Error("Login error: ${e.message}")
             }
         }
     }
 
-    private suspend fun pollTokenEndpoint(deviceCode: String, intervalSeconds: Int, expiresInSeconds: Int) {
+    private suspend fun pollTokenEndpoint(deviceCode: String, initialInterval: Int, expiresInSeconds: Int) {
         val startTime = System.currentTimeMillis()
         val expiryMillis = expiresInSeconds * 1000L
+        var interval = initialInterval
 
         while (System.currentTimeMillis() - startTime < expiryMillis) {
-            delay(intervalSeconds * 1000L)
+            delay(interval * 1000L)
 
             val tokenUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
             val conn = tokenUrl.openConnection() as HttpURLConnection
@@ -158,6 +157,9 @@ class XboxAuthManager(private val context: Context) {
                 val errResp = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                 if (errResp.contains("authorization_pending")) {
                     continue
+                } else if (errResp.contains("slow_down")) {
+                    interval += 5
+                    continue
                 } else if (errResp.contains("authorization_declined") || errResp.contains("bad_verification_code")) {
                     _authState.value = XboxAuthState.Error("Authorization cancelled or expired.")
                     return
@@ -186,7 +188,16 @@ class XboxAuthManager(private val context: Context) {
             xblConn.doOutput = true
             xblConn.setRequestProperty("Content-Type", "application/json")
             xblConn.setRequestProperty("Accept", "application/json")
+            xblConn.setRequestProperty("x-xbl-contract-version", "1")
             OutputStreamWriter(xblConn.outputStream).use { it.write(xblReq.toString()) }
+
+            val xblCode = xblConn.responseCode
+            if (xblCode !in 200..299) {
+                val err = xblConn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $xblCode"
+                Logger.e("XboxAuth", "XBL auth failed: $err")
+                _authState.value = XboxAuthState.Error("Xbox Live auth failed ($xblCode)")
+                return
+            }
 
             val xblResp = xblConn.inputStream.bufferedReader().use { it.readText() }
             val xblJson = JsonParser.parseString(xblResp).asJsonObject
@@ -211,7 +222,16 @@ class XboxAuthManager(private val context: Context) {
             xstsConn.doOutput = true
             xstsConn.setRequestProperty("Content-Type", "application/json")
             xstsConn.setRequestProperty("Accept", "application/json")
+            xstsConn.setRequestProperty("x-xbl-contract-version", "1")
             OutputStreamWriter(xstsConn.outputStream).use { it.write(xstsReq.toString()) }
+
+            val xstsCode = xstsConn.responseCode
+            if (xstsCode !in 200..299) {
+                val err = xstsConn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $xstsCode"
+                Logger.e("XboxAuth", "XSTS authorize failed: $err")
+                _authState.value = XboxAuthState.Error("XSTS token failed ($xstsCode)")
+                return
+            }
 
             val xstsResp = xstsConn.inputStream.bufferedReader().use { it.readText() }
             val xstsJson = JsonParser.parseString(xstsResp).asJsonObject
@@ -253,7 +273,7 @@ class XboxAuthManager(private val context: Context) {
     }
 
     companion object {
-        const val CLIENT_ID = "0000000048183214" // Bedrock client ID
-        const val SCOPE = "service::user.auth.xboxlive.com::MBI_SSL"
+        const val CLIENT_ID = "c36a9fb6-4f2a-41ff-90bd-ae7cc92031eb" // Public Microsoft OAuth client ID for Minecraft / Xbox
+        const val SCOPE = "XboxLive.signin offline_access"
     }
 }

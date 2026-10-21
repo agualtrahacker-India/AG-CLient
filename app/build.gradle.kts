@@ -63,7 +63,9 @@ android {
 
 dependencies {
     // CloudburstMC Bedrock Protocol
-    implementation("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta1")
+    implementation("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta14-SNAPSHOT")
+    implementation("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta14-SNAPSHOT")
+    implementation("org.cloudburstmc.protocol:common:3.0.0.Beta14-SNAPSHOT")
 
     // Kotlin Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")

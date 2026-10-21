@@ -106,7 +106,7 @@ class ProxySession(
 
         // Initialize Upstream Client connection via Netty RakNet Bootstrap
         val targetAddress = InetSocketAddress(config.targetIp, config.targetPort)
-        val group = NioEventLoopGroup()
+        val group = NioEventLoopGroup(2)
         clientEventLoopGroup = group
 
         val future = CompletableFuture<BedrockClientSession>()

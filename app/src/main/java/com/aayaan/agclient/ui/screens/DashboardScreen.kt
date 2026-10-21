@@ -10,6 +10,7 @@ import com.aayaan.agclient.auth.XboxAuthManager
 import com.aayaan.agclient.auth.XboxAuthState
 import com.aayaan.agclient.config.ProxyConfig
 import com.aayaan.agclient.proxy.ServiceState
+import com.aayaan.agclient.ui.components.QuickConnectCard
 import com.aayaan.agclient.ui.components.ServerConfigCard
 import com.aayaan.agclient.ui.components.ServiceControlCard
 import com.aayaan.agclient.ui.components.UpdateCard
@@ -25,6 +26,8 @@ fun DashboardScreen(
     onStopService: () -> Unit,
     authManager: XboxAuthManager,
     autoUpdater: AutoUpdater,
+    vpnActive: Boolean = false,
+    onToggleVpn: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val authState by authManager.authState.collectAsState()
@@ -41,6 +44,11 @@ fun DashboardScreen(
             serviceState = serviceState,
             onStartService = onStartService,
             onStopService = onStopService
+        )
+
+        QuickConnectCard(
+            vpnActive = vpnActive,
+            onToggleVpn = onToggleVpn
         )
 
         UpdateCard(

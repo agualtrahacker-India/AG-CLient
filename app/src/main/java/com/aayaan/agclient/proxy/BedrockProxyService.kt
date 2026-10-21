@@ -28,6 +28,9 @@ import org.cloudburstmc.protocol.bedrock.BedrockPong
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitializer
 import java.net.InetSocketAddress
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
 enum class ServiceState {
@@ -139,6 +142,7 @@ class BedrockProxyService : Service() {
                 Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:${config.localBindPort}")
 
                 updateNotification("Proxy Active on port ${config.localBindPort} - LAN Broadcast On")
+                startLanBroadcaster()
 
             } catch (t: Throwable) {
                 Logger.e("ProxyService", "Failed to start Bedrock proxy", t)
@@ -148,8 +152,75 @@ class BedrockProxyService : Service() {
         }
     }
 
+    private var lanBroadcastJob: Job? = null
+
+    private fun startLanBroadcaster() {
+        lanBroadcastJob?.cancel()
+        lanBroadcastJob = scope.launch(Dispatchers.IO) {
+            val socket = try {
+                DatagramSocket().apply {
+                    broadcast = true
+                }
+            } catch (e: Exception) {
+                Logger.w("ProxyService", "Failed to open UDP broadcast socket: ${e.message}")
+                return@launch
+            }
+
+            val magic = byteArrayOf(
+                0x00.toByte(), 0xff.toByte(), 0xff.toByte(), 0x00.toByte(),
+                0xfe.toByte(), 0xfe.toByte(), 0xfe.toByte(), 0xfe.toByte(),
+                0xfd.toByte(), 0xfd.toByte(), 0xfd.toByte(), 0xfd.toByte(),
+                0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()
+            )
+
+            val serverGuid = 12345678901234L
+            val port = (application as AGClientApplication).configManager.currentConfig.localBindPort
+
+            Logger.i("ProxyService", "Started active LAN Pong broadcaster (1.21 compatible).")
+
+            while (isActive) {
+                try {
+                    // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
+                    val motd = "MCPE;§bAG Client Beta §7[The Hive];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$port;$port;"
+                    val motdBytes = motd.toByteArray(Charsets.UTF_8)
+
+                    val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {
+                        put(0x1c.toByte()) // ID_UNCONNECTED_PONG
+                        putLong(System.currentTimeMillis())
+                        putLong(serverGuid)
+                        put(magic)
+                        putShort(motdBytes.size.toShort())
+                        put(motdBytes)
+                    }.array()
+
+                    val targets = listOf(
+                        InetSocketAddress("255.255.255.255", 19132),
+                        InetSocketAddress("255.255.255.255", 19133),
+                        InetSocketAddress("127.0.0.1", 19132),
+                        InetSocketAddress("127.0.0.1", 19133)
+                    )
+
+                    for (target in targets) {
+                        try {
+                            val packet = DatagramPacket(buffer, buffer.size, target)
+                            socket.send(packet)
+                        } catch (_: Exception) {}
+                    }
+                } catch (e: Exception) {
+                    Logger.d("ProxyService", "LAN broadcast tick error: ${e.message}")
+                }
+                delay(1500L) // Broadcast every 1.5 seconds
+            }
+            try {
+                socket.close()
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun stopProxy() {
         try {
+            lanBroadcastJob?.cancel()
+            lanBroadcastJob = null
             for ((_, session) in activeSessions) {
                 session.close()
             }

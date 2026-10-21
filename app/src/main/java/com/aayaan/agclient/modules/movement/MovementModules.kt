@@ -177,7 +177,7 @@ class WaterWalkModule : Module(
             val blockBelow = session.worldState.chunkCache.getBlock(packet.position.x.toInt(), footY - 1, packet.position.z.toInt())
             // If water or lava runtime ID
             if (blockBelow != 0) {
-                packet.motion = Vector3f.from(packet.motion.x, 0.0f, packet.motion.z)
+                packet.motion = org.cloudburstmc.math.vector.Vector2f.from(packet.motion.x, 0.0f)
             }
         }
         return PacketSignal.UNHANDLED
@@ -198,7 +198,7 @@ class AirJumpModule : Module(
             if (isJump) {
                 val motionPacket = SetEntityMotionPacket().apply {
                     runtimeEntityId = session.worldState.playerState.runtimeEntityId
-                    motion = Vector3f.from(packet.motion.x, 0.42f, packet.motion.z)
+                    motion = Vector3f.from(packet.motion.x, 0.42f, packet.motion.y)
                 }
                 session.sendToClient(motionPacket)
             }

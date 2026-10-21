@@ -78,6 +78,12 @@ dependencies {
     implementation("org.cloudburstmc.protocol:common:3.0.0.Beta14-SNAPSHOT")
     implementation("org.cloudburstmc.math:immutable:2.0")
 
+    // Netty
+    implementation("io.netty:netty-transport:4.1.101.Final")
+    implementation("io.netty:netty-codec:4.1.101.Final")
+    implementation("io.netty:netty-common:4.1.101.Final")
+    implementation("io.netty:netty-buffer:4.1.101.Final")
+
     // Kotlin Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

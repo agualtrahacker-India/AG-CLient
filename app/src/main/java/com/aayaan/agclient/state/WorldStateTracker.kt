@@ -18,7 +18,7 @@ class WorldStateTracker {
                 playerState.yaw = packet.rotation.y
                 playerState.pitch = packet.rotation.x
                 playerState.headYaw = packet.rotation.z
-                playerState.motion = packet.motion
+                playerState.motion = org.cloudburstmc.math.vector.Vector3f.from(packet.motion.x, 0f, packet.motion.y)
 
                 val inputNames = packet.inputData.map { it.name }
                 playerState.isJumping = inputNames.any { it.contains("JUMP", ignoreCase = true) }

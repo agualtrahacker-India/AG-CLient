@@ -45,9 +45,9 @@ class PlayerEspModule : Module(
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is SetEntityDataPacket) {
             try {
-                packet.metadata.getOrCreateFlags().setFlag(EntityFlag.GLOWING, true)
+                packet.metadata.setFlag(EntityFlag.GLOWING, true)
                 if (nametagsProp.value) {
-                    packet.metadata.getOrCreateFlags().setFlag(EntityFlag.ALWAYS_SHOW_NAMETAG, true)
+                    packet.metadata.setFlag(EntityFlag.ALWAYS_SHOW_NAMETAG, true)
                 }
             } catch (_: Exception) {}
         }
@@ -105,7 +105,7 @@ class FreecamModule : Module(
             if (frozen != null) {
                 // Keep server body at frozen coordinate
                 packet.position = frozen
-                packet.motion = Vector3f.ZERO
+                packet.motion = org.cloudburstmc.math.vector.Vector2f.ZERO
             }
         }
         return PacketSignal.UNHANDLED
@@ -139,7 +139,7 @@ class NoInvisibleModule : Module(
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is SetEntityDataPacket) {
             try {
-                packet.metadata.getOrCreateFlags().setFlag(EntityFlag.INVISIBLE, false)
+                packet.metadata.setFlag(EntityFlag.INVISIBLE, false)
             } catch (_: Exception) {}
         } else if (packet is MobEffectPacket && packet.eventId == MobEffectPacket.Event.ADD) {
             if (packet.effectId == 14) { // Invisibility effect ID

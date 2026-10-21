@@ -40,7 +40,13 @@ jobs:
           chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --info
+        run: |
+          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-build.log
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "::error::Gradle build failed. Showing error details:"
+            grep -E "e: |FAILURE:|Caused by:|Compilation error|unresolved reference" -C 3 gradle-build.log || tail -n 120 gradle-build.log
+            exit 1
+          fi
 
       - name: Upload Build Reports on Failure
         if: failure()

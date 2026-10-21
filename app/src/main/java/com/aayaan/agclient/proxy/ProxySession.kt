@@ -7,12 +7,17 @@ import com.aayaan.agclient.gui.InGameGuiManager
 import com.aayaan.agclient.modules.ModuleManager
 import com.aayaan.agclient.state.WorldStateTracker
 import com.aayaan.agclient.utils.Logger
-import org.cloudburstmc.protocol.bedrock.BedrockClient
+import io.netty.bootstrap.Bootstrap
+import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.channel.socket.nio.NioDatagramChannel
+import org.cloudburstmc.netty.channel.raknet.RakChannelFactory
 import org.cloudburstmc.protocol.bedrock.BedrockClientSession
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
+import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockClientInitializer
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
 import java.net.InetSocketAddress
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -29,6 +34,7 @@ class ProxySession(
     var clientSession: BedrockClientSession? = null // Remote connection to Target Minecraft Server
         private set
 
+    private var clientEventLoopGroup: NioEventLoopGroup? = null
     val worldState = WorldStateTracker()
     private val tickExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
@@ -98,38 +104,48 @@ class ProxySession(
     private fun handleClientLogin(packet: LoginPacket) {
         Logger.i("ProxySession", "Intercepted LoginPacket. Protocol Version: ${packet.protocolVersion}")
 
-        // Initialize Upstream Client connection
+        // Initialize Upstream Client connection via Netty RakNet Bootstrap
         val targetAddress = InetSocketAddress(config.targetIp, config.targetPort)
-        val client = BedrockClient(InetSocketAddress("0.0.0.0", 0))
+        val group = NioEventLoopGroup()
+        clientEventLoopGroup = group
 
-        client.bind().whenComplete { _, bindErr ->
-            if (bindErr != null) {
-                Logger.e("ProxySession", "Failed to bind client socket", bindErr)
-                sendChatToClient("§c[Proxy] Failed to bind outbound proxy socket!")
+        val future = CompletableFuture<BedrockClientSession>()
+
+        val bootstrap = Bootstrap()
+            .channelFactory(RakChannelFactory.client(NioDatagramChannel::class.java))
+            .group(group)
+            .handler(object : BedrockClientInitializer() {
+                override fun initSession(session: BedrockClientSession) {
+                    future.complete(session)
+                }
+            })
+
+        bootstrap.connect(targetAddress).addListener { connFuture ->
+            if (!connFuture.isSuccess) {
+                future.completeExceptionally(connFuture.cause())
+            }
+        }
+
+        future.whenComplete { session, connErr ->
+            if (connErr != null) {
+                Logger.e("ProxySession", "Failed to connect to ${config.targetIp}:${config.targetPort}", connErr)
+                sendChatToClient("§c[Proxy] Connection refused by remote server: ${connErr.message}")
                 return@whenComplete
             }
 
-            client.connect(targetAddress).whenComplete { session, connErr ->
-                if (connErr != null) {
-                    Logger.e("ProxySession", "Failed to connect to ${config.targetIp}:${config.targetPort}", connErr)
-                    sendChatToClient("§c[Proxy] Connection refused by remote server: ${connErr.message}")
-                    return@whenComplete
-                }
+            clientSession = session
+            isConnectedToUpstream = true
+            Logger.i("ProxySession", "Connected to remote server: ${config.targetIp}:${config.targetPort}")
 
-                clientSession = session
-                isConnectedToUpstream = true
-                Logger.i("ProxySession", "Connected to remote server: ${config.targetIp}:${config.targetPort}")
+            // Sync codec with local client session
+            try {
+                session.codec = serverSession.codec
+            } catch (_: Exception) {}
 
-                // Sync codec with local client session
-                try {
-                    session.packetCodec = serverSession.packetCodec
-                } catch (_: Exception) {}
+            setupRemoteSessionHandler(session)
 
-                setupRemoteSessionHandler(session)
-
-                // Forward LoginPacket with extracted skin & auth
-                session.sendPacket(packet)
-            }
+            // Forward LoginPacket with extracted skin & auth
+            session.sendPacket(packet)
         }
     }
 
@@ -190,6 +206,7 @@ class ProxySession(
         try {
             clientSession?.disconnect()
             serverSession.disconnect()
+            clientEventLoopGroup?.shutdownGracefully()
         } catch (_: Exception) {}
         worldState.reset()
         Logger.i("ProxySession", "Proxy session terminated.")

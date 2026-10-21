@@ -238,7 +238,7 @@ class TpAuraModule : Module(
         val tpAuth = PlayerAuthInputPacket().apply {
             position = stepPos
             rotation = Vector3f.from(player.pitch, player.yaw, player.headYaw)
-            motion = Vector3f.ZERO
+            motion = org.cloudburstmc.math.vector.Vector2f.ZERO
         }
         session.sendToServer(tpAuth)
 
@@ -256,7 +256,7 @@ class TpAuraModule : Module(
         val tpBack = PlayerAuthInputPacket().apply {
             position = originalPos
             rotation = Vector3f.from(player.pitch, player.yaw, player.headYaw)
-            motion = Vector3f.ZERO
+            motion = org.cloudburstmc.math.vector.Vector2f.ZERO
         }
         session.sendToServer(tpBack)
     }

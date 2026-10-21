@@ -70,13 +70,13 @@ class NukeModule : Module(
                 runtimeEntityId = player.runtimeEntityId
                 action = PlayerActionType.START_BREAK
                 blockPosition = blockPos
-                blockFace = 0
+                face = 0
             }
             val stopBreak = PlayerActionPacket().apply {
                 runtimeEntityId = player.runtimeEntityId
                 action = PlayerActionType.STOP_BREAK
                 blockPosition = blockPos
-                blockFace = 0
+                face = 0
             }
             session.sendToServer(startBreak)
             session.sendToServer(stopBreak)

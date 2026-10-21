@@ -149,11 +149,6 @@ fun QuickConnectCard(
                     )
                 }
             }
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
-            }
 
             // Option 3: Manual Servers Tab
             Card(

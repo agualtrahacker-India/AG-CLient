@@ -90,17 +90,17 @@ fun QuickConnectCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Option 1: 1-Tap Official Server Redirect (VPN Mode)",
+                                text = "Option 1: 1-Tap Auto-Server Intercept (VPN Mode)",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Routes to Selected Server: $targetServer",
+                                text = "Auto-intercepts whichever server you tap in Minecraft!",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NeonCyan
                             )
                             Text(
-                                text = "Zero IP typing. Tap any featured server in Minecraft to join!",
+                                text = "Zero IP typing. Tap Hive, CubeCraft, NetherGames, or any server in Minecraft!",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -117,7 +117,7 @@ fun QuickConnectCard(
 
                     if (vpnActive) {
                         Text(
-                            text = "✓ Active! Open Minecraft -> Servers -> Tap any server (The Hive, CubeCraft, etc.) to connect straight into $targetServer!",
+                            text = "✓ Ready! Open Minecraft -> Tap ANY server (Hive, CubeCraft, NetherGames, etc.) to play with AG Client hacks enabled!",
                             style = MaterialTheme.typography.labelSmall,
                             color = AccentGreen
                         )

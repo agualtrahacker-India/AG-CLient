@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import com.aayaan.agclient.AGClientApplication
 import com.aayaan.agclient.MainActivity
 import com.aayaan.agclient.R
 import com.aayaan.agclient.utils.Logger
@@ -45,7 +46,7 @@ class BedrockVpnService : VpnService() {
         }
 
         try {
-            val notification = createNotification("Hive Redirect Active: Tap 'The Hive' in Minecraft!")
+            val notification = createNotification("Auto-Intercept Active: Tap any server in Minecraft!")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
                     this,
@@ -146,16 +147,30 @@ class BedrockVpnService : VpnService() {
             val dnsData = data.copyOfRange(udpPayloadOffset, length)
             val domain = extractDnsDomain(dnsData)
 
-            val isFeaturedServer = domain.contains("hivebedrock.network") ||
+            val configuredTarget = (application as? AGClientApplication)?.configManager?.currentConfig?.targetIp ?: ""
+
+            val isGameServer = domain.contains("hivebedrock.network") ||
                     domain.contains("inpvp.net") ||
                     domain.contains("cubecraft.net") ||
                     domain.contains("mineplex.com") ||
                     domain.contains("galaxite.net") ||
                     domain.contains("lifeboat.net") ||
-                    domain.contains("pixelparadise.gg")
+                    domain.contains("lbsg.net") ||
+                    domain.contains("pixelparadise.gg") ||
+                    domain.contains("nethergames.org") ||
+                    domain.contains("flarepe.com") ||
+                    domain.contains("rushnation.net") ||
+                    domain.contains("hyperlandsmc.net") ||
+                    domain.contains("zeqa.net") ||
+                    domain.contains("falixnodes.net") ||
+                    domain.contains("aternos.me") ||
+                    domain.contains("minehut.gg") ||
+                    (configuredTarget.isNotEmpty() && domain.contains(configuredTarget, ignoreCase = true))
 
-            if (isFeaturedServer) {
-                Logger.i("VpnService", "Intercepted DNS query for $domain -> Redirecting to Selected Server (127.0.0.1)")
+            if (isGameServer) {
+                Logger.i("VpnService", "Intercepted DNS query for $domain -> Routing to AG Client (127.0.0.1)")
+                DynamicTargetTracker.setTarget(domain, 19132)
+                updateNotification("Connected to: $domain (AG Client Ready)")
                 val responseDns = craftLocalDnsResponse(dnsData, "127.0.0.1")
                 val responseIp = craftUdpIpPacket(
                     srcIp = data.copyOfRange(16, 20), // original dst
@@ -345,13 +360,20 @@ class BedrockVpnService : VpnService() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AG Client (Hive Redirect Active)")
+            .setContentTitle("AG Client (Auto-Redirect)")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Redirect", stopPendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    private fun updateNotification(content: String) {
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.notify(NOTIFICATION_ID, createNotification(content))
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {

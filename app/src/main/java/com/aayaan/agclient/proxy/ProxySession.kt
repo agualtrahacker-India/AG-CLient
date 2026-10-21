@@ -132,8 +132,12 @@ class ProxySession(
         Logger.i("ProxySession", "Intercepted LoginPacket. Protocol Version: ${packet.protocolVersion}")
         cachedLoginPacket = packet
 
-        // Initialize Upstream Client connection via Netty RakNet Bootstrap
-        val targetAddress = InetSocketAddress(config.targetIp, config.targetPort)
+        // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
+        val targetHost = DynamicTargetTracker.activeTargetHost ?: config.targetIp
+        val targetPort = DynamicTargetTracker.activeTargetPort
+        val targetAddress = InetSocketAddress(targetHost, targetPort)
+        Logger.i("ProxySession", "Connecting upstream to target: $targetHost:$targetPort")
+
         val group = NioEventLoopGroup(2)
         clientEventLoopGroup = group
 
@@ -156,14 +160,14 @@ class ProxySession(
 
         future.whenComplete { session, connErr ->
             if (connErr != null) {
-                Logger.e("ProxySession", "Failed to connect to ${config.targetIp}:${config.targetPort}", connErr)
-                sendChatToClient("§c[Proxy] Connection refused by remote server: ${connErr.message}")
+                Logger.e("ProxySession", "Failed to connect to $targetHost:$targetPort", connErr)
+                sendChatToClient("§c[Proxy] Connection refused by remote server ($targetHost): ${connErr.message}")
                 return@whenComplete
             }
 
             clientSession = session
             isConnectedToUpstream = true
-            Logger.i("ProxySession", "Connected to remote server: ${config.targetIp}:${config.targetPort}")
+            Logger.i("ProxySession", "Connected to remote server: $targetHost:$targetPort")
 
             // Sync codec with local client session
             try {

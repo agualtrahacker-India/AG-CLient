@@ -100,7 +100,7 @@ fun QuickConnectCard(
                                 color = NeonCyan
                             )
                             Text(
-                                text = "Zero IP typing. Tap Hive, CubeCraft, NetherGames, or any server in Minecraft!",
+                                text = "Zero IP typing. Restricted to Minecraft only — your normal phone apps (YouTube, WhatsApp, Browser) run at full speed untouched!",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )

@@ -75,14 +75,40 @@ class BedrockVpnService : VpnService() {
         scope.launch {
             try {
                 val builder = Builder()
-                    .setSession("AG Client Hive Redirect")
+                    .setSession("AG Client Redirect")
                     .addAddress("10.8.0.2", 32)
                     .addDnsServer("10.8.0.1")
                     .addRoute("10.8.0.1", 32) // Route only DNS traffic through the tunnel
-                    .setBlocking(false)
+                    .setBlocking(true)
+
+                // Restrict VPN exclusively to Minecraft so normal phone apps (YouTube, WhatsApp, Browser) are 100% untouched
+                val candidatePackages = listOf(
+                    "com.mojang.minecraftpe",
+                    "com.mojang.minecraftpe.beta",
+                    "com.mojang.minecrafttrialpe",
+                    "com.microsoft.minecraft"
+                )
+                var allowedAppAdded = false
+                for (pkg in candidatePackages) {
+                    try {
+                        packageManager.getPackageInfo(pkg, 0)
+                        builder.addAllowedApplication(pkg)
+                        allowedAppAdded = true
+                        Logger.i("VpnService", "Restricted VPN exclusively to Minecraft: $pkg")
+                    } catch (_: Exception) {}
+                }
+
+                if (!allowedAppAdded) {
+                    try {
+                        builder.addAllowedApplication("com.mojang.minecraftpe")
+                        Logger.i("VpnService", "Defaulted allowed application to com.mojang.minecraftpe")
+                    } catch (e: Exception) {
+                        Logger.w("VpnService", "Could not restrict application: ${e.message}")
+                    }
+                }
 
                 vpnInterface = builder.establish()
-                Logger.i("VpnService", "VPN Tunnel established. Intercepting Hive DNS queries...")
+                Logger.i("VpnService", "VPN Tunnel established in blocking mode. Intercepting Minecraft DNS...")
 
                 runDnsLoop()
             } catch (t: Throwable) {
@@ -98,34 +124,26 @@ class BedrockVpnService : VpnService() {
         val outStream = FileOutputStream(pfd.fileDescriptor)
         val packetBuffer = ByteArray(4096)
 
-        // Protect upstream DNS socket from VPN loop
-        val upstreamSocket = DatagramSocket()
-        protect(upstreamSocket)
-        upstreamSocket.soTimeout = 2000
+        Logger.i("VpnService", "Starting VPN DNS loop...")
 
         while (isRunning && isActive) {
             try {
                 val length = inStream.read(packetBuffer)
                 if (length > 0) {
-                    handleIpPacket(packetBuffer, length, outStream, upstreamSocket)
-                } else {
-                    delay(5)
+                    val packetCopy = packetBuffer.copyOf(length)
+                    handleIpPacket(packetCopy, length, outStream)
                 }
             } catch (e: Exception) {
-                if (isRunning) delay(10)
+                if (!isRunning) break
+                delay(10)
             }
         }
-
-        try {
-            upstreamSocket.close()
-        } catch (_: Exception) {}
     }
 
     private fun handleIpPacket(
         data: ByteArray,
         length: Int,
-        vpnOut: FileOutputStream,
-        upstreamSocket: DatagramSocket
+        vpnOut: FileOutputStream
     ) {
         // Simple IPv4 UDP DNS inspection
         if (length < 28) return
@@ -180,30 +198,55 @@ class BedrockVpnService : VpnService() {
                     payload = responseDns
                 )
                 synchronized(vpnOut) {
-                    vpnOut.write(responseIp)
+                    try {
+                        vpnOut.write(responseIp)
+                    } catch (_: Exception) {}
                 }
             } else {
-                // Forward query to Google DNS
-                try {
-                    val reqPacket = DatagramPacket(dnsData, dnsData.size, InetAddress.getByName("8.8.8.8"), 53)
-                    upstreamSocket.send(reqPacket)
+                // Forward non-game DNS queries (e.g. Xbox Live auth, Microsoft login, etc.) asynchronously
+                // so the main VPN loop never blocks and multiple queries execute concurrently
+                val srcIp = data.copyOfRange(16, 20)
+                val dstIp = data.copyOfRange(12, 16)
+                scope.launch(Dispatchers.IO) {
+                    val upstreamServers = listOf("1.1.1.1", "8.8.8.8")
+                    var respDns: ByteArray? = null
 
-                    val respBuffer = ByteArray(2048)
-                    val respPacket = DatagramPacket(respBuffer, respBuffer.size)
-                    upstreamSocket.receive(respPacket)
+                    for (dnsServer in upstreamServers) {
+                        var socket: DatagramSocket? = null
+                        try {
+                            socket = DatagramSocket()
+                            protect(socket)
+                            socket.soTimeout = 2000
+                            val reqPacket = DatagramPacket(dnsData, dnsData.size, InetAddress.getByName(dnsServer), 53)
+                            socket.send(reqPacket)
 
-                    val respDns = respPacket.data.copyOf(respPacket.length)
-                    val responseIp = craftUdpIpPacket(
-                        srcIp = data.copyOfRange(16, 20),
-                        dstIp = data.copyOfRange(12, 16),
-                        srcPort = 53,
-                        dstPort = srcPort,
-                        payload = respDns
-                    )
-                    synchronized(vpnOut) {
-                        vpnOut.write(responseIp)
+                            val respBuffer = ByteArray(2048)
+                            val respPacket = DatagramPacket(respBuffer, respBuffer.size)
+                            socket.receive(respPacket)
+                            respDns = respPacket.data.copyOf(respPacket.length)
+                            break
+                        } catch (_: Exception) {
+                            // Try next DNS server
+                        } finally {
+                            try { socket?.close() } catch (_: Exception) {}
+                        }
                     }
-                } catch (_: Exception) {}
+
+                    if (respDns != null) {
+                        val responseIp = craftUdpIpPacket(
+                            srcIp = srcIp,
+                            dstIp = dstIp,
+                            srcPort = 53,
+                            dstPort = srcPort,
+                            payload = respDns
+                        )
+                        synchronized(vpnOut) {
+                            try {
+                                vpnOut.write(responseIp)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
             }
         }
     }
@@ -235,34 +278,43 @@ class BedrockVpnService : VpnService() {
         bb.putShort(0x8180.toShort())
         // Questions: 1
         bb.putShort(1)
-        // Answer RRs: 1
-        bb.putShort(1)
-        // Authority RRs: 0, Additional RRs: 0
-        bb.putShort(0)
-        bb.putShort(0)
 
-        // Copy Question section
+        // Find end of Question QNAME
         var qPos = 12
         while (qPos < query.size && query[qPos].toInt() != 0) {
             qPos++
         }
-        qPos += 5 // Null byte + QTYPE (2) + QCLASS (2)
-        val questionLen = qPos - 12
-        bb.put(query, 12, questionLen)
+        qPos++ // Skip terminating 0x00 byte
 
-        // Answer Section: Name Pointer (0xc00c)
-        bb.putShort(0xc00c.toShort())
-        // Type: A (0x0001)
-        bb.putShort(1)
-        // Class: IN (0x0001)
-        bb.putShort(1)
-        // TTL: 60s
-        bb.putInt(60)
-        // Data length: 4 bytes
-        bb.putShort(4)
-        // IP bytes: 127.0.0.1
-        val ipParts = redirectIp.split(".").map { it.toInt().toByte() }
-        for (b in ipParts) bb.put(b)
+        if (qPos + 4 > query.size) {
+            return query // Safety fallback for truncated packets
+        }
+
+        val qType = ((query[qPos].toInt() and 0xFF) shl 8) or (query[qPos + 1].toInt() and 0xFF)
+        val questionLen = (qPos + 4) - 12
+
+        if (qType == 28) {
+            // AAAA (IPv6) query -> Return NODATA (0 answers, NOERROR) so Minecraft cleanly falls back to IPv4
+            bb.putShort(0.toShort()) // Answer RRs: 0
+            bb.putShort(0.toShort()) // Authority RRs: 0
+            bb.putShort(0.toShort()) // Additional RRs: 0
+            bb.put(query, 12, questionLen)
+        } else {
+            // A (IPv4) query -> Return redirectIp (127.0.0.1)
+            bb.putShort(1.toShort()) // Answer RRs: 1
+            bb.putShort(0.toShort()) // Authority RRs: 0
+            bb.putShort(0.toShort()) // Additional RRs: 0
+            bb.put(query, 12, questionLen)
+
+            // Answer Section: Name Pointer (0xc00c)
+            bb.putShort(0xc00c.toShort())
+            bb.putShort(1.toShort()) // Type: A (0x0001)
+            bb.putShort(1.toShort()) // Class: IN (0x0001)
+            bb.putInt(60) // TTL: 60s
+            bb.putShort(4.toShort()) // Data length: 4 bytes
+            val ipParts = redirectIp.split(".").map { it.toInt().toByte() }
+            for (b in ipParts) bb.put(b)
+        }
 
         val out = ByteArray(bb.position())
         System.arraycopy(bb.array(), 0, out, 0, out.size)

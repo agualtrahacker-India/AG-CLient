@@ -13,6 +13,7 @@ import io.netty.channel.socket.nio.NioDatagramChannel
 import org.cloudburstmc.netty.channel.raknet.RakChannelFactory
 import org.cloudburstmc.protocol.bedrock.BedrockClientSession
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
+import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockClientInitializer
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -40,6 +41,8 @@ class ProxySession(
 
     var cachedClientData: String? = null
     var cachedSkinData: String? = null
+    var cachedLoginPacket: LoginPacket? = null
+    var clientProtocolVersion: Int = 671
     var isConnectedToUpstream: Boolean = false
         private set
 
@@ -73,6 +76,12 @@ class ProxySession(
     fun handleClientPacket(packet: BedrockPacket): PacketSignal {
         Logger.packet("Client->Proxy", packet.javaClass.simpleName)
 
+        // 0. Intercept Network Settings Request (Modern Bedrock handshake)
+        if (packet is RequestNetworkSettingsPacket) {
+            handleNetworkSettingsRequest(packet)
+            return PacketSignal.HANDLED
+        }
+
         // 1. Intercept Commands (Private Chat Filter)
         if (commandManager.handleClientPacket(packet, this) == PacketSignal.HANDLED) {
             return PacketSignal.HANDLED
@@ -101,8 +110,27 @@ class ProxySession(
         return PacketSignal.UNHANDLED
     }
 
+    private fun handleNetworkSettingsRequest(packet: RequestNetworkSettingsPacket) {
+        clientProtocolVersion = packet.protocolVersion
+        Logger.i("ProxySession", "Client requested network settings. Protocol Version: $clientProtocolVersion")
+
+        val response = NetworkSettingsPacket().apply {
+            compressionAlgorithm = PacketCompressionAlgorithm.ZLIB
+            compressionThreshold = 512
+        }
+
+        try {
+            serverSession.sendPacketImmediately(response)
+            serverSession.setCompression(PacketCompressionAlgorithm.ZLIB)
+            Logger.i("ProxySession", "Responded with NetworkSettingsPacket & enabled ZLIB compression.")
+        } catch (e: Exception) {
+            Logger.e("ProxySession", "Failed to send NetworkSettingsPacket", e)
+        }
+    }
+
     private fun handleClientLogin(packet: LoginPacket) {
         Logger.i("ProxySession", "Intercepted LoginPacket. Protocol Version: ${packet.protocolVersion}")
+        cachedLoginPacket = packet
 
         // Initialize Upstream Client connection via Netty RakNet Bootstrap
         val targetAddress = InetSocketAddress(config.targetIp, config.targetPort)
@@ -144,14 +172,39 @@ class ProxySession(
 
             setupRemoteSessionHandler(session)
 
-            // Forward LoginPacket with extracted skin & auth
-            session.sendPacket(packet)
+            // Request network settings from upstream server
+            val upstreamReq = RequestNetworkSettingsPacket().apply {
+                protocolVersion = clientProtocolVersion
+            }
+            try {
+                session.sendPacketImmediately(upstreamReq)
+                Logger.i("ProxySession", "Sent RequestNetworkSettingsPacket ($clientProtocolVersion) to upstream server.")
+            } catch (e: Exception) {
+                Logger.e("ProxySession", "Failed to send RequestNetworkSettingsPacket upstream", e)
+                session.sendPacket(packet)
+            }
         }
     }
 
     private fun setupRemoteSessionHandler(session: BedrockClientSession) {
         session.setPacketHandler(object : BedrockPacketHandler {
             override fun handlePacket(packet: BedrockPacket): PacketSignal {
+                if (packet is NetworkSettingsPacket) {
+                    Logger.i("ProxySession", "Upstream server replied with NetworkSettingsPacket: ${packet.compressionAlgorithm}")
+                    try {
+                        session.setCompression(packet.compressionAlgorithm)
+                    } catch (e: Exception) {
+                        Logger.w("ProxySession", "Could not set upstream compression: ${e.message}")
+                    }
+
+                    // Upstream is ready for authentication! Send cached LoginPacket
+                    cachedLoginPacket?.let { login ->
+                        session.sendPacket(login)
+                        Logger.i("ProxySession", "Forwarded player's LoginPacket to upstream server.")
+                    }
+                    return PacketSignal.HANDLED
+                }
+
                 val signal = handleServerPacket(packet)
                 if (signal == PacketSignal.UNHANDLED) {
                     serverSession.sendPacket(packet)

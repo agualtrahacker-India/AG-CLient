@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -37,6 +38,7 @@ class BedrockProxyService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var wakeLock: PowerManager.WakeLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var serverChannel: Channel? = null
     private var eventLoopGroup: NioEventLoopGroup? = null
     private val activeSessions = ConcurrentHashMap<InetSocketAddress, ProxySession>()
@@ -45,7 +47,7 @@ class BedrockProxyService : Service() {
         super.onCreate()
         try {
             createNotificationChannel()
-            acquireWakeLock()
+            acquireLocks()
         } catch (t: Throwable) {
             Logger.e("ProxyService", "Error during onCreate", t)
         }
@@ -160,10 +162,10 @@ class BedrockProxyService : Service() {
             Logger.e("ProxyService", "Error stopping proxy server", t)
         }
         _serviceState.value = ServiceState.STOPPED
-        releaseWakeLock()
+        releaseLocks()
     }
 
-    private fun acquireWakeLock() {
+    private fun acquireLocks() {
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
@@ -175,16 +177,31 @@ class BedrockProxyService : Service() {
         } catch (t: Throwable) {
             Logger.e("ProxyService", "Error acquiring wake lock", t)
         }
+
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("AGClient::LANMulticast").apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+            Logger.i("ProxyService", "Acquired Wifi MulticastLock for LAN game discovery.")
+        } catch (t: Throwable) {
+            Logger.w("ProxyService", "Error acquiring MulticastLock: ${t.message}")
+        }
     }
 
-    private fun releaseWakeLock() {
+    private fun releaseLocks() {
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
             }
-        } catch (e: Exception) {
-            Logger.e("ProxyService", "Error releasing WakeLock", e)
-        }
+        } catch (_: Exception) {}
+
+        try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+            }
+        } catch (_: Exception) {}
     }
 
     private fun createNotificationChannel() {

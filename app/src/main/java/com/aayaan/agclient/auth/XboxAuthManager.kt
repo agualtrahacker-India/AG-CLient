@@ -79,6 +79,8 @@ class XboxAuthManager(private val context: Context) {
                 val conn = deviceCodeUrl.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
                 conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
 
                 val body = "client_id=$CLIENT_ID&scope=" + URLEncoder.encode(SCOPE, "UTF-8")
@@ -98,7 +100,7 @@ class XboxAuthManager(private val context: Context) {
                 val deviceCode = json.get("device_code").asString
                 val userCode = json.get("user_code").asString
                 val verificationUri = json.get("verification_uri").asString
-                val expiresIn = json.get("expires_in").asInt
+                val expiresIn = if (json.has("expires_in")) json.get("expires_in").asInt else 900
                 val interval = if (json.has("interval")) json.get("interval").asInt else 5
 
                 _authState.value = XboxAuthState.DeviceCodePrompt(
@@ -109,7 +111,7 @@ class XboxAuthManager(private val context: Context) {
                 )
                 Logger.i("XboxAuth", "Prompt user with code: $userCode at $verificationUri")
 
-                // Poll token endpoint
+                // Poll token endpoint with resilience to background app switching
                 pollTokenEndpoint(deviceCode, interval, expiresIn)
 
             } catch (e: Exception) {
@@ -121,52 +123,64 @@ class XboxAuthManager(private val context: Context) {
 
     private suspend fun pollTokenEndpoint(deviceCode: String, initialInterval: Int, expiresInSeconds: Int) {
         val startTime = System.currentTimeMillis()
-        val expiryMillis = expiresInSeconds * 1000L
-        var interval = initialInterval
+        val expiryMillis = if (expiresInSeconds > 0) expiresInSeconds * 1000L else 900_000L
+        var interval = if (initialInterval > 0) initialInterval else 5
 
         while (System.currentTimeMillis() - startTime < expiryMillis) {
             delay(interval * 1000L)
 
-            val tokenUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
-            val conn = tokenUrl.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            try {
+                val tokenUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+                val conn = tokenUrl.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
 
-            val params = "grant_type=urn:ietf:params:oauth:grant-type:device_code" +
-                    "&client_id=$CLIENT_ID" +
-                    "&device_code=" + URLEncoder.encode(deviceCode, "UTF-8")
+                val params = "grant_type=urn:ietf:params:oauth:grant-type:device_code" +
+                        "&client_id=$CLIENT_ID" +
+                        "&device_code=" + URLEncoder.encode(deviceCode, "UTF-8")
 
-            OutputStreamWriter(conn.outputStream).use { it.write(params) }
+                OutputStreamWriter(conn.outputStream).use { it.write(params) }
 
-            val code = conn.responseCode
-            if (code == 200) {
-                val resp = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JsonParser.parseString(resp).asJsonObject
-                val msAccessToken = json.get("access_token").asString
-                val refreshToken = if (json.has("refresh_token")) json.get("refresh_token").asString else null
+                val code = conn.responseCode
+                if (code == 200) {
+                    val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JsonParser.parseString(resp).asJsonObject
+                    val msAccessToken = json.get("access_token").asString
+                    val refreshToken = if (json.has("refresh_token")) json.get("refresh_token").asString else null
 
-                if (refreshToken != null) {
-                    prefs.edit().putString("ms_refresh_token", refreshToken).apply()
-                }
+                    if (refreshToken != null) {
+                        prefs.edit().putString("ms_refresh_token", refreshToken).apply()
+                    }
 
-                Logger.i("XboxAuth", "OAuth token acquired. Authenticating with Xbox Live...")
-                authenticateXboxLive(msAccessToken)
-                return
-            } else {
-                val errResp = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                if (errResp.contains("authorization_pending")) {
-                    continue
-                } else if (errResp.contains("slow_down")) {
-                    interval += 5
-                    continue
-                } else if (errResp.contains("authorization_declined") || errResp.contains("bad_verification_code")) {
-                    _authState.value = XboxAuthState.Error("Authorization cancelled or expired.")
+                    Logger.i("XboxAuth", "OAuth token acquired. Authenticating with Xbox Live...")
+                    authenticateXboxLive(msAccessToken)
                     return
+                } else {
+                    val errResp = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                    Logger.d("XboxAuth", "Poll status $code: $errResp")
+
+                    if (errResp.contains("authorization_pending")) {
+                        continue
+                    } else if (errResp.contains("slow_down")) {
+                        interval += 5
+                        continue
+                    } else if (errResp.contains("authorization_declined")) {
+                        _authState.value = XboxAuthState.Error("Sign-in cancelled in browser.")
+                        return
+                    } else if (errResp.contains("expired_token") || errResp.contains("bad_verification_code")) {
+                        _authState.value = XboxAuthState.Error("Login session expired. Please tap Retry.")
+                        return
+                    }
                 }
+            } catch (e: Exception) {
+                // If a temporary network glitch or socket timeout occurs while app is backgrounded, keep polling!
+                Logger.w("XboxAuth", "Temporary connection error during poll, will retry: ${e.message}")
             }
         }
-        _authState.value = XboxAuthState.Error("Device code timed out.")
+        _authState.value = XboxAuthState.Error("Device code timed out. Please tap Retry.")
     }
 
     private fun authenticateXboxLive(msAccessToken: String) {
@@ -186,6 +200,8 @@ class XboxAuthManager(private val context: Context) {
             val xblConn = URL("https://user.auth.xboxlive.com/user/authenticate").openConnection() as HttpURLConnection
             xblConn.requestMethod = "POST"
             xblConn.doOutput = true
+            xblConn.connectTimeout = 15000
+            xblConn.readTimeout = 15000
             xblConn.setRequestProperty("Content-Type", "application/json")
             xblConn.setRequestProperty("Accept", "application/json")
             xblConn.setRequestProperty("x-xbl-contract-version", "1")
@@ -220,6 +236,8 @@ class XboxAuthManager(private val context: Context) {
             val xstsConn = URL("https://xsts.auth.xboxlive.com/xsts/authorize").openConnection() as HttpURLConnection
             xstsConn.requestMethod = "POST"
             xstsConn.doOutput = true
+            xstsConn.connectTimeout = 15000
+            xstsConn.readTimeout = 15000
             xstsConn.setRequestProperty("Content-Type", "application/json")
             xstsConn.setRequestProperty("Accept", "application/json")
             xstsConn.setRequestProperty("x-xbl-contract-version", "1")

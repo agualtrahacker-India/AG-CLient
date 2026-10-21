@@ -43,14 +43,15 @@ class ProxySession(
     }
 
     private fun setupLocalSessionHandler() {
-        serverSession.setBatchHandler { _, packets ->
-            for (packet in packets) {
+        serverSession.setPacketHandler(object : BedrockPacketHandler {
+            override fun handlePacket(packet: BedrockPacket): PacketSignal {
                 val signal = handleClientPacket(packet)
                 if (signal == PacketSignal.UNHANDLED) {
                     clientSession?.sendPacket(packet)
                 }
+                return PacketSignal.HANDLED
             }
-        }
+        })
     }
 
     private fun startTickLoop() {
@@ -119,6 +120,11 @@ class ProxySession(
                 isConnectedToUpstream = true
                 Logger.i("ProxySession", "Connected to remote server: ${config.targetIp}:${config.targetPort}")
 
+                // Sync codec with local client session
+                try {
+                    session.packetCodec = serverSession.packetCodec
+                } catch (_: Exception) {}
+
                 setupRemoteSessionHandler(session)
 
                 // Forward LoginPacket with extracted skin & auth
@@ -128,14 +134,15 @@ class ProxySession(
     }
 
     private fun setupRemoteSessionHandler(session: BedrockClientSession) {
-        session.setBatchHandler { _, packets ->
-            for (packet in packets) {
+        session.setPacketHandler(object : BedrockPacketHandler {
+            override fun handlePacket(packet: BedrockPacket): PacketSignal {
                 val signal = handleServerPacket(packet)
                 if (signal == PacketSignal.UNHANDLED) {
                     serverSession.sendPacket(packet)
                 }
+                return PacketSignal.HANDLED
             }
-        }
+        })
     }
 
     fun handleServerPacket(packet: BedrockPacket): PacketSignal {

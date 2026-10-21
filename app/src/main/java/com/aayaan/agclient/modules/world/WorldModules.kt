@@ -102,12 +102,11 @@ class AutoToolSwapModule : Module(
     override fun onClientPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is PlayerActionPacket && packet.action == PlayerActionType.START_BREAK) {
-            // Find optimal tool and swap slot
             val bestSlot = 0 // Best slot calculation
             val equipPacket = MobEquipmentPacket().apply {
                 runtimeEntityId = session.worldState.playerState.runtimeEntityId
-                selectedSlot = bestSlot
-                slot = bestSlot
+                hotbarSlot = bestSlot
+                inventorySlot = bestSlot
                 containerId = 0
             }
             session.sendToServer(equipPacket)

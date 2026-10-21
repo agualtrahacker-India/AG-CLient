@@ -5,7 +5,6 @@ import com.aayaan.agclient.modules.ModuleCategory
 import com.aayaan.agclient.modules.ModuleProperty
 import com.aayaan.agclient.proxy.ProxySession
 import org.cloudburstmc.math.vector.Vector3f
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -25,7 +24,6 @@ class XrayModule : Module(
 
     override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
-        // Chunk and block modification logic
         return PacketSignal.UNHANDLED
     }
 }
@@ -46,10 +44,12 @@ class PlayerEspModule : Module(
     override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is SetEntityDataPacket) {
-            packet.metadata.flags.setFlag(EntityFlag.GLOWING, true)
-            if (nametagsProp.value) {
-                packet.metadata.flags.setFlag(EntityFlag.ALWAYS_SHOW_NAMETAG, true)
-            }
+            try {
+                packet.metadata.getOrCreateFlags().setFlag(EntityFlag.GLOWING, true)
+                if (nametagsProp.value) {
+                    packet.metadata.getOrCreateFlags().setFlag(EntityFlag.ALWAYS_SHOW_NAMETAG, true)
+                }
+            } catch (_: Exception) {}
         }
         return PacketSignal.UNHANDLED
     }
@@ -138,7 +138,9 @@ class NoInvisibleModule : Module(
     override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is SetEntityDataPacket) {
-            packet.metadata.flags.setFlag(EntityFlag.INVISIBLE, false)
+            try {
+                packet.metadata.getOrCreateFlags().setFlag(EntityFlag.INVISIBLE, false)
+            } catch (_: Exception) {}
         } else if (packet is MobEffectPacket && packet.eventId == MobEffectPacket.Event.ADD) {
             if (packet.effectId == 14) { // Invisibility effect ID
                 return PacketSignal.HANDLED // Strip invisibility effect!

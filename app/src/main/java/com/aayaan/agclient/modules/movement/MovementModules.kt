@@ -6,10 +6,7 @@ import com.aayaan.agclient.modules.ModuleProperty
 import com.aayaan.agclient.proxy.ProxySession
 import com.aayaan.agclient.utils.MathUtils
 import org.cloudburstmc.math.vector.Vector3f
-import org.cloudburstmc.protocol.bedrock.data.Ability
-import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.AttributeData
-import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -22,51 +19,21 @@ class FlyModule : Module(
     description = "Enables creative flight or velocity flight in survival"
 ) {
     val speedProp = ModuleProperty.FloatProperty("Speed", "Flight speed", 1.2f, 0.5f, 5.0f)
-    val modeProp = ModuleProperty.ModeProperty("Mode", "Flight mode", "Abilities", listOf("Abilities", "Velocity"))
+    val modeProp = ModuleProperty.ModeProperty("Mode", "Flight mode", "Velocity", listOf("Velocity", "Glide"))
 
     init {
         addProperty(speedProp)
         addProperty(modeProp)
     }
 
-    override fun onEnable(session: ProxySession?) {
-        session ?: return
-        if (modeProp.value == "Abilities") {
-            sendFlyAbilities(session, canFly = true, isFlying = true)
-        }
-    }
-
-    override fun onDisable(session: ProxySession?) {
-        session ?: return
-        if (modeProp.value == "Abilities") {
-            sendFlyAbilities(session, canFly = false, isFlying = false)
-        }
-    }
-
     override fun onTick(session: ProxySession) {
         if (!isEnabled) return
-        if (modeProp.value == "Velocity") {
-            val player = session.worldState.playerState
-            val motion = SetEntityMotionPacket().apply {
-                runtimeEntityId = player.runtimeEntityId
-                this.motion = Vector3f.from(0f, 0.05f, 0f)
-            }
-            session.sendToClient(motion)
-        }
-    }
-
-    private fun sendFlyAbilities(session: ProxySession, canFly: Boolean, isFlying: Boolean) {
         val player = session.worldState.playerState
-        val abilitiesPacket = UpdateAbilitiesPacket().apply {
-            uniqueEntityId = player.uniqueEntityId
-            val layer = AbilityLayer().apply {
-                layerType = AbilityLayer.Type.BASE
-                abilityValues.add(Ability.MAY_FLY)
-                abilityValues.add(Ability.FLYING)
-            }
-            abilityLayers.add(layer)
+        val motion = SetEntityMotionPacket().apply {
+            runtimeEntityId = player.runtimeEntityId
+            this.motion = Vector3f.from(0f, 0.05f * speedProp.value, 0f)
         }
-        session.sendToClient(abilitiesPacket)
+        session.sendToClient(motion)
     }
 }
 
@@ -226,12 +193,15 @@ class AirJumpModule : Module(
 ) {
     override fun onClientPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
-        if (packet is PlayerAuthInputPacket && packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
-            val motionPacket = SetEntityMotionPacket().apply {
-                runtimeEntityId = session.worldState.playerState.runtimeEntityId
-                motion = Vector3f.from(packet.motion.x, 0.42f, packet.motion.z)
+        if (packet is PlayerAuthInputPacket) {
+            val isJump = packet.inputData.any { it.name.contains("JUMP", ignoreCase = true) }
+            if (isJump) {
+                val motionPacket = SetEntityMotionPacket().apply {
+                    runtimeEntityId = session.worldState.playerState.runtimeEntityId
+                    motion = Vector3f.from(packet.motion.x, 0.42f, packet.motion.z)
+                }
+                session.sendToClient(motionPacket)
             }
-            session.sendToClient(motionPacket)
         }
         return PacketSignal.UNHANDLED
     }

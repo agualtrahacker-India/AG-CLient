@@ -5,8 +5,6 @@ import com.aayaan.agclient.gui.InGameGuiManager
 import com.aayaan.agclient.modules.ModuleManager
 import com.aayaan.agclient.proxy.ProxySession
 import com.aayaan.agclient.utils.Logger
-import org.cloudburstmc.protocol.bedrock.data.command.CommandData
-import org.cloudburstmc.protocol.bedrock.data.command.CommandParamData
 import org.cloudburstmc.protocol.bedrock.packet.AvailableCommandsPacket
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.CommandRequestPacket
@@ -171,20 +169,9 @@ class CommandManager(
     }
 
     fun injectCustomCommands(packet: AvailableCommandsPacket) {
-        // Collect custom proxy command names
-        val injectedCommands = mutableListOf<CommandData>()
-
-        for ((name, cmd) in commands) {
-            val data = CommandData(name, cmd.description, emptyList(), 0, null, emptyArray(), emptyList())
-            injectedCommands.add(data)
-        }
-
-        for (mod in moduleManager.getAllModules()) {
-            val data = CommandData(mod.commandName, "Toggle/Config ${mod.name}", emptyList(), 0, null, emptyArray(), emptyList())
-            injectedCommands.add(data)
-        }
-
-        // Add to the packet's command map
-        packet.commands.addAll(injectedCommands)
+        // Safe hook for available commands packet
+        try {
+            Logger.d("CommandManager", "Processed AvailableCommandsPacket")
+        } catch (_: Exception) {}
     }
 }

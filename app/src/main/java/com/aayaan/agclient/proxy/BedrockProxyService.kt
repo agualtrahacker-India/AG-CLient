@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.cloudburstmc.protocol.bedrock.BedrockServer
+import org.cloudburstmc.protocol.bedrock.BedrockServerEventHandler
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
 import org.cloudburstmc.protocol.bedrock.util.BedrockPong
 import java.net.InetSocketAddress
@@ -73,11 +74,12 @@ class BedrockProxyService : Service() {
                     ipv4Port = config.localBindPort
                     ipv6Port = config.localBindPort
                 }
-                bedrockServer.bedrockPong = pong
 
-                // Session listener
-                bedrockServer.handler = object : org.cloudburstmc.protocol.bedrock.BedrockServerEventHandler {
+                // Register Bedrock Server event handler
+                bedrockServer.setHandler(object : BedrockServerEventHandler {
                     override fun onConnectionRequest(address: InetSocketAddress): Boolean = true
+
+                    override fun onQuery(address: InetSocketAddress): BedrockPong = pong
 
                     override fun onSessionCreation(session: BedrockServerSession) {
                         Logger.i("ProxyService", "Local Minecraft client connected: ${session.socketAddress}")
@@ -91,14 +93,8 @@ class BedrockProxyService : Service() {
                             guiManager = app.guiManager
                         )
                         activeSessions[session.socketAddress] = proxySession
-
-                        session.addDisconnectListener {
-                            Logger.i("ProxyService", "Local Minecraft client disconnected: ${session.socketAddress}")
-                            proxySession.close()
-                            activeSessions.remove(session.socketAddress)
-                        }
                     }
-                }
+                })
 
                 bedrockServer.bind().join()
                 server = bedrockServer
@@ -196,7 +192,3 @@ class BedrockProxyService : Service() {
         val serviceState: StateFlow<ServiceState> = _serviceState.asStateFlow()
     }
 }
-
-private var BedrockServer.bedrockPong: BedrockPong?
-    get() = null
-    set(_) {}

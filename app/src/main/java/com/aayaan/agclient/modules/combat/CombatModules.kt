@@ -4,13 +4,10 @@ import com.aayaan.agclient.modules.Module
 import com.aayaan.agclient.modules.ModuleCategory
 import com.aayaan.agclient.modules.ModuleProperty
 import com.aayaan.agclient.proxy.ProxySession
-import com.aayaan.agclient.state.models.TrackedEntity
-import com.aayaan.agclient.utils.Logger
 import com.aayaan.agclient.utils.MathUtils
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityEventType
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -52,9 +49,6 @@ class KillAuraModule : Module(
         }
 
         val target = targets.minByOrNull { MathUtils.distance(playerState.position, it.position) } ?: return
-
-        // Calculate look rotation
-        val (yaw, pitch) = MathUtils.calculateRotations(playerState.eyePosition, target.position)
 
         // 1. Inject swing
         val swingPacket = AnimatePacket().apply {
@@ -329,14 +323,14 @@ class AutoTotemModule : Module(
     private fun equipTotem(session: ProxySession) {
         val inventory = session.worldState.playerState.inventory
         // Find Totem of Undying item
-        for ((slot, item) in inventory) {
-            if (item.definition?.identifier?.contains("totem", ignoreCase = true) == true) {
+        for ((_, itemData) in inventory) {
+            if (itemData.definition?.identifier?.contains("totem", ignoreCase = true) == true) {
                 val mobEquip = MobEquipmentPacket().apply {
                     runtimeEntityId = session.worldState.playerState.runtimeEntityId
-                    item = item
+                    item = itemData
                     containerId = 119 // Offhand slot ID
-                    selectedSlot = 0
-                    slot = 0
+                    hotbarSlot = 0
+                    inventorySlot = 0
                 }
                 session.sendToServer(mobEquip)
                 break

@@ -3,8 +3,6 @@ package com.aayaan.agclient.state
 import com.aayaan.agclient.state.models.PlayerState
 import com.aayaan.agclient.state.models.TrackedEntity
 import com.aayaan.agclient.utils.Logger
-import org.cloudburstmc.protocol.bedrock.data.AttributeData
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityEventType
 import org.cloudburstmc.protocol.bedrock.packet.*
 
 class WorldStateTracker {
@@ -21,9 +19,11 @@ class WorldStateTracker {
                 playerState.pitch = packet.rotation.x
                 playerState.headYaw = packet.rotation.z
                 playerState.motion = packet.motion
-                playerState.isJumping = packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.JUMPING)
-                playerState.isSneaking = packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.SNEAKING)
-                playerState.isSprinting = packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.SPRINTING)
+
+                val inputNames = packet.inputData.map { it.name }
+                playerState.isJumping = inputNames.any { it.contains("JUMP", ignoreCase = true) }
+                playerState.isSneaking = inputNames.any { it.contains("SNEAK", ignoreCase = true) }
+                playerState.isSprinting = inputNames.any { it.contains("SPRINT", ignoreCase = true) }
             }
             is MovePlayerPacket -> {
                 if (packet.runtimeEntityId == playerState.runtimeEntityId) {
@@ -36,7 +36,7 @@ class WorldStateTracker {
             }
             is MobEquipmentPacket -> {
                 if (packet.runtimeEntityId == playerState.runtimeEntityId) {
-                    playerState.selectedHotbarSlot = packet.selectedSlot
+                    playerState.selectedHotbarSlot = packet.hotbarSlot
                 }
             }
         }
@@ -48,7 +48,12 @@ class WorldStateTracker {
                 playerState.runtimeEntityId = packet.runtimeEntityId
                 playerState.uniqueEntityId = packet.uniqueEntityId
                 playerState.position = packet.playerPosition
-                playerState.rotation = packet.rotation
+                try {
+                    packet.rotation?.let { rot ->
+                        playerState.pitch = rot.x
+                        playerState.yaw = rot.y
+                    }
+                } catch (_: Exception) {}
                 Logger.i("WorldState", "Game started. Player runtime ID: ${packet.runtimeEntityId}")
             }
             is UpdateAttributesPacket -> {
@@ -135,7 +140,3 @@ class WorldStateTracker {
         chunkCache.clear()
     }
 }
-
-private var StartGamePacket.rotation: Float
-    get() = 0f
-    set(_) {}

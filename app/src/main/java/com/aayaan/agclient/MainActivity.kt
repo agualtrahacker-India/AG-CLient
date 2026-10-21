@@ -1,0 +1,153 @@
+package com.aayaan.agclient
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import com.aayaan.agclient.proxy.BedrockProxyService
+import com.aayaan.agclient.proxy.ServiceState
+import com.aayaan.agclient.ui.screens.*
+import com.aayaan.agclient.ui.theme.*
+
+enum class AppTab(val label: String, val icon: ImageVector) {
+    DASHBOARD("Dashboard", Icons.Default.Dashboard),
+    MODULES("Modules", Icons.Default.Tune),
+    CONSOLE("Console", Icons.Default.Terminal),
+    SETTINGS("Settings", Icons.Default.Settings)
+}
+
+class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        val app = application as AGClientApplication
+
+        setContent {
+            AGClientTheme {
+                val serviceState by BedrockProxyService.serviceState.collectAsState()
+                var currentTab by remember { mutableStateOf(AppTab.DASHBOARD) }
+                var config by remember { mutableStateOf(app.configManager.currentConfig) }
+
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "AG Client",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = NeonCyan
+                                    )
+                                    Badge(containerColor = ElectricPurple) {
+                                        Text(
+                                            text = "Beta v1.0.0",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextPrimary
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                        )
+                    },
+                    bottomBar = {
+                        NavigationBar(containerColor = DarkSurface) {
+                            for (tab in AppTab.values()) {
+                                NavigationBarItem(
+                                    selected = currentTab == tab,
+                                    onClick = { currentTab = tab },
+                                    icon = { Icon(tab.icon, contentDescription = tab.label) },
+                                    label = { Text(tab.label) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = DarkBackground,
+                                        selectedTextColor = NeonCyan,
+                                        indicatorColor = NeonCyan,
+                                        unselectedIconColor = TextSecondary,
+                                        unselectedTextColor = TextSecondary
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    containerColor = DarkBackground
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                            .background(DarkBackground)
+                    ) {
+                        when (currentTab) {
+                            AppTab.DASHBOARD -> DashboardScreen(
+                                config = config,
+                                onConfigChanged = { updated ->
+                                    config = updated
+                                    app.configManager.saveConfig("default")
+                                },
+                                serviceState = serviceState,
+                                onStartService = { startProxyService() },
+                                onStopService = { stopProxyService() },
+                                authManager = app.xboxAuthManager
+                            )
+                            AppTab.MODULES -> ModulesScreen(
+                                moduleManager = app.moduleManager
+                            )
+                            AppTab.CONSOLE -> ConsoleScreen()
+                            AppTab.SETTINGS -> SettingsScreen(
+                                configManager = app.configManager,
+                                config = config,
+                                onConfigUpdated = {
+                                    config = app.configManager.currentConfig
+                                    app.moduleManager.syncWithConfig()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startProxyService() {
+        val intent = Intent(this, BedrockProxyService::class.java).apply {
+            action = BedrockProxyService.ACTION_START
+        }
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    private fun stopProxyService() {
+        val intent = Intent(this, BedrockProxyService::class.java).apply {
+            action = BedrockProxyService.ACTION_STOP
+        }
+        startService(intent)
+    }
+}

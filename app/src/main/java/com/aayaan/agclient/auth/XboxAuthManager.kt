@@ -1,0 +1,259 @@
+package com.aayaan.agclient.auth
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
+import com.aayaan.agclient.utils.Logger
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
+class XboxAuthManager(private val context: Context) {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val _authState = MutableStateFlow<XboxAuthState>(XboxAuthState.Idle)
+    val authState: StateFlow<XboxAuthState> = _authState.asStateFlow()
+
+    private val prefs: SharedPreferences by lazy {
+        try {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            EncryptedSharedPreferences.create(
+                "ag_client_xbox_auth",
+                masterKeyAlias,
+                context,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Logger.e("XboxAuth", "Fallback to private preferences", e)
+            context.getSharedPreferences("ag_client_xbox_auth_fallback", Context.MODE_PRIVATE)
+        }
+    }
+
+    var liveGamertag: String? = null
+        private set
+    var liveXuid: String? = null
+        private set
+    var liveUserHash: String? = null
+        private set
+    var liveXstsToken: String? = null
+        private set
+
+    init {
+        loadSavedCredentials()
+    }
+
+    private fun loadSavedCredentials() {
+        val gamertag = prefs.getString("gamertag", null)
+        val xuid = prefs.getString("xuid", null)
+        val userHash = prefs.getString("user_hash", null)
+        val xsts = prefs.getString("xsts_token", null)
+
+        if (gamertag != null && xuid != null && userHash != null && xsts != null) {
+            liveGamertag = gamertag
+            liveXuid = xuid
+            liveUserHash = userHash
+            liveXstsToken = xsts
+            _authState.value = XboxAuthState.Authenticated(gamertag, xuid, userHash)
+            Logger.i("XboxAuth", "Loaded cached session for $gamertag")
+        }
+    }
+
+    fun startDeviceCodeLogin() {
+        scope.launch {
+            try {
+                _authState.value = XboxAuthState.Authenticating
+                Logger.i("XboxAuth", "Requesting Microsoft Device Code...")
+
+                // Request device code
+                val deviceCodeUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")
+                val conn = deviceCodeUrl.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+                val body = "client_id=$CLIENT_ID&scope=" + URLEncoder.encode(SCOPE, "UTF-8")
+                OutputStreamWriter(conn.outputStream).use { it.write(body) }
+
+                val responseCode = conn.responseCode
+                if (responseCode !in 200..299) {
+                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "Error $responseCode"
+                    _authState.value = XboxAuthState.Error("Device code error: $err")
+                    return@launch
+                }
+
+                val responseJson = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JsonParser.parseString(responseJson).asJsonObject
+
+                val deviceCode = json.get("device_code").asString
+                val userCode = json.get("user_code").asString
+                val verificationUri = json.get("verification_uri").asString
+                val expiresIn = json.get("expires_in").asInt
+                val interval = if (json.has("interval")) json.get("interval").asInt else 5
+
+                _authState.value = XboxAuthState.DeviceCodePrompt(
+                    userCode = userCode,
+                    verificationUri = verificationUri,
+                    expiresIn = expiresIn,
+                    message = "Go to $verificationUri and enter code: $userCode"
+                )
+                Logger.i("XboxAuth", "Prompt user with code: $userCode at $verificationUri")
+
+                // Poll token endpoint
+                pollTokenEndpoint(deviceCode, interval, expiresIn)
+
+            } catch (e: Exception) {
+                Logger.e("XboxAuth", "Device code flow failed", e)
+                _authState.value = XboxAuthState.Error("Flow error: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun pollTokenEndpoint(deviceCode: String, intervalSeconds: Int, expiresInSeconds: Int) {
+        val startTime = System.currentTimeMillis()
+        val expiryMillis = expiresInSeconds * 1000L
+
+        while (System.currentTimeMillis() - startTime < expiryMillis) {
+            delay(intervalSeconds * 1000L)
+
+            val tokenUrl = URL("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+            val conn = tokenUrl.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+            val params = "grant_type=urn:ietf:params:oauth:grant-type:device_code" +
+                    "&client_id=$CLIENT_ID" +
+                    "&device_code=" + URLEncoder.encode(deviceCode, "UTF-8")
+
+            OutputStreamWriter(conn.outputStream).use { it.write(params) }
+
+            val code = conn.responseCode
+            if (code == 200) {
+                val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JsonParser.parseString(resp).asJsonObject
+                val msAccessToken = json.get("access_token").asString
+                val refreshToken = if (json.has("refresh_token")) json.get("refresh_token").asString else null
+
+                if (refreshToken != null) {
+                    prefs.edit().putString("ms_refresh_token", refreshToken).apply()
+                }
+
+                Logger.i("XboxAuth", "OAuth token acquired. Authenticating with Xbox Live...")
+                authenticateXboxLive(msAccessToken)
+                return
+            } else {
+                val errResp = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                if (errResp.contains("authorization_pending")) {
+                    continue
+                } else if (errResp.contains("authorization_declined") || errResp.contains("bad_verification_code")) {
+                    _authState.value = XboxAuthState.Error("Authorization cancelled or expired.")
+                    return
+                }
+            }
+        }
+        _authState.value = XboxAuthState.Error("Device code timed out.")
+    }
+
+    private fun authenticateXboxLive(msAccessToken: String) {
+        try {
+            // 1. User Authenticate (XBL token)
+            val xblReq = JsonObject().apply {
+                val prop = JsonObject().apply {
+                    addProperty("AuthMethod", "RPS")
+                    addProperty("SiteName", "user.auth.xboxlive.com")
+                    addProperty("RpsTicket", "d=$msAccessToken")
+                }
+                add("Properties", prop)
+                addProperty("RelyingParty", "http://auth.xboxlive.com")
+                addProperty("TokenType", "JWT")
+            }
+
+            val xblConn = URL("https://user.auth.xboxlive.com/user/authenticate").openConnection() as HttpURLConnection
+            xblConn.requestMethod = "POST"
+            xblConn.doOutput = true
+            xblConn.setRequestProperty("Content-Type", "application/json")
+            xblConn.setRequestProperty("Accept", "application/json")
+            OutputStreamWriter(xblConn.outputStream).use { it.write(xblReq.toString()) }
+
+            val xblResp = xblConn.inputStream.bufferedReader().use { it.readText() }
+            val xblJson = JsonParser.parseString(xblResp).asJsonObject
+            val xblToken = xblJson.get("Token").asString
+            val userHash = xblJson.getAsJsonObject("DisplayClaims")
+                .getAsJsonArray("xui").get(0).asJsonObject.get("uhs").asString
+
+            // 2. XSTS Token for Minecraft Bedrock
+            val xstsReq = JsonObject().apply {
+                val prop = JsonObject().apply {
+                    addProperty("SandboxId", "RETAIL")
+                    val userTokens = com.google.gson.JsonArray().apply { add(xblToken) }
+                    add("UserTokens", userTokens)
+                }
+                add("Properties", prop)
+                addProperty("RelyingParty", "https://multiplayer.minecraft.net/")
+                addProperty("TokenType", "JWT")
+            }
+
+            val xstsConn = URL("https://xsts.auth.xboxlive.com/xsts/authorize").openConnection() as HttpURLConnection
+            xstsConn.requestMethod = "POST"
+            xstsConn.doOutput = true
+            xstsConn.setRequestProperty("Content-Type", "application/json")
+            xstsConn.setRequestProperty("Accept", "application/json")
+            OutputStreamWriter(xstsConn.outputStream).use { it.write(xstsReq.toString()) }
+
+            val xstsResp = xstsConn.inputStream.bufferedReader().use { it.readText() }
+            val xstsJson = JsonParser.parseString(xstsResp).asJsonObject
+            val xstsToken = xstsJson.get("Token").asString
+
+            val displayClaims = xstsJson.getAsJsonObject("DisplayClaims").getAsJsonArray("xui").get(0).asJsonObject
+            val gamertag = if (displayClaims.has("gtg")) displayClaims.get("gtg").asString else "AGClientUser"
+            val xuid = if (displayClaims.has("xid")) displayClaims.get("xid").asString else "0"
+
+            liveGamertag = gamertag
+            liveXuid = xuid
+            liveUserHash = userHash
+            liveXstsToken = xstsToken
+
+            prefs.edit()
+                .putString("gamertag", gamertag)
+                .putString("xuid", xuid)
+                .putString("user_hash", userHash)
+                .putString("xsts_token", xstsToken)
+                .apply()
+
+            _authState.value = XboxAuthState.Authenticated(gamertag, xuid, userHash)
+            Logger.i("XboxAuth", "Successfully authenticated Xbox Gamertag: $gamertag ($xuid)")
+
+        } catch (e: Exception) {
+            Logger.e("XboxAuth", "Failed to complete Xbox Live auth chain", e)
+            _authState.value = XboxAuthState.Error("Xbox auth failed: ${e.message}")
+        }
+    }
+
+    fun logout() {
+        prefs.edit().clear().apply()
+        liveGamertag = null
+        liveXuid = null
+        liveUserHash = null
+        liveXstsToken = null
+        _authState.value = XboxAuthState.Idle
+        Logger.i("XboxAuth", "Logged out and cleared tokens.")
+    }
+
+    companion object {
+        const val CLIENT_ID = "0000000048183214" // Bedrock client ID
+        const val SCOPE = "service::user.auth.xboxlive.com::MBI_SSL"
+    }
+}

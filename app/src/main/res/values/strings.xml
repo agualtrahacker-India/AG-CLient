@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">AG Client</string>
+    <string name="app_version">v1.0.0-beta</string>
+    <string name="service_notification_channel">AG Client Proxy Channel</string>
+    <string name="service_notification_title">AG Client Proxy Running</string>
+    <string name="service_notification_desc">Listening on 127.0.0.1:19132 - LAN World Active</string>
+</resources>

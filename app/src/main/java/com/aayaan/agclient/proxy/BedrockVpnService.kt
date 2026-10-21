@@ -6,10 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.aayaan.agclient.MainActivity
 import com.aayaan.agclient.R
 import com.aayaan.agclient.utils.Logger
@@ -43,10 +45,22 @@ class BedrockVpnService : VpnService() {
         }
 
         try {
-            startForeground(NOTIFICATION_ID, createNotification("Hive Redirect Active: Tap 'The Hive' in Minecraft!"))
+            val notification = createNotification("Hive Redirect Active: Tap 'The Hive' in Minecraft!")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             startVpnTunnel()
         } catch (t: Throwable) {
             Logger.e("VpnService", "Failed to startForeground for VPN", t)
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         return START_STICKY
@@ -65,11 +79,6 @@ class BedrockVpnService : VpnService() {
                     .addDnsServer("10.8.0.1")
                     .addRoute("10.8.0.1", 32) // Route only DNS traffic through the tunnel
                     .setBlocking(false)
-
-                try {
-                    // Restrict VPN to Minecraft only if available
-                    builder.addAllowedApplication("com.mojang.minecraftpe")
-                } catch (_: Exception) {}
 
                 vpnInterface = builder.establish()
                 Logger.i("VpnService", "VPN Tunnel established. Intercepting Hive DNS queries...")
@@ -137,8 +146,16 @@ class BedrockVpnService : VpnService() {
             val dnsData = data.copyOfRange(udpPayloadOffset, length)
             val domain = extractDnsDomain(dnsData)
 
-            if (domain.contains("hivebedrock.network")) {
-                Logger.i("VpnService", "Intercepted DNS query for $domain -> Redirecting to 127.0.0.1")
+            val isFeaturedServer = domain.contains("hivebedrock.network") ||
+                    domain.contains("inpvp.net") ||
+                    domain.contains("cubecraft.net") ||
+                    domain.contains("mineplex.com") ||
+                    domain.contains("galaxite.net") ||
+                    domain.contains("lifeboat.net") ||
+                    domain.contains("pixelparadise.gg")
+
+            if (isFeaturedServer) {
+                Logger.i("VpnService", "Intercepted DNS query for $domain -> Redirecting to Selected Server (127.0.0.1)")
                 val responseDns = craftLocalDnsResponse(dnsData, "127.0.0.1")
                 val responseIp = craftUdpIpPacket(
                     srcIp = data.copyOfRange(16, 20), // original dst

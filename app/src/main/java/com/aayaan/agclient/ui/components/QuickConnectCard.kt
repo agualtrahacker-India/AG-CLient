@@ -25,6 +25,7 @@ import java.util.Collections
 fun QuickConnectCard(
     vpnActive: Boolean,
     onToggleVpn: (Boolean) -> Unit,
+    targetServer: String = "geo.hivebedrock.network",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -76,7 +77,7 @@ fun QuickConnectCard(
                 )
             }
 
-            // Option 1: 1-Tap Hive Redirect
+            // Option 1: 1-Tap Official Server Redirect
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
                 modifier = Modifier.fillMaxWidth()
@@ -89,13 +90,18 @@ fun QuickConnectCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Option 1: Tap 'The Hive' in Official Server List",
+                                text = "Option 1: 1-Tap Official Server Redirect (VPN Mode)",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Zero IP typing. Redirects the official Hive button locally.",
+                                text = "Routes to Selected Server: $targetServer",
                                 style = MaterialTheme.typography.bodySmall,
+                                color = NeonCyan
+                            )
+                            Text(
+                                text = "Zero IP typing. Tap any featured server in Minecraft to join!",
+                                style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                         }
@@ -111,7 +117,7 @@ fun QuickConnectCard(
 
                     if (vpnActive) {
                         Text(
-                            text = "✓ Active! Just open Minecraft -> Servers -> Tap 'The Hive'!",
+                            text = "✓ Active! Open Minecraft -> Servers -> Tap any server (The Hive, CubeCraft, etc.) to connect straight into $targetServer!",
                             style = MaterialTheme.typography.labelSmall,
                             color = AccentGreen
                         )
@@ -137,7 +143,12 @@ fun QuickConnectCard(
                         )
                     }
                     Text(
-                        text = "• Open Minecraft -> Tap 'Friends' tab -> Scroll down to 'LAN Games' -> Tap 'AG Client Beta [The Hive]'.\n• Automatically broadcast on your Wi-Fi/Hotspot!",
+                        text = "• Open Minecraft -> Tap 'Friends' tab -> Scroll down to 'LAN Games' -> Tap 'AG Client Beta'.\n• Automatically connects you directly to $targetServer!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            }
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )

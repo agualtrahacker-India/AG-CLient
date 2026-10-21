@@ -48,7 +48,8 @@ fun DashboardScreen(
 
         QuickConnectCard(
             vpnActive = vpnActive,
-            onToggleVpn = onToggleVpn
+            onToggleVpn = onToggleVpn,
+            targetServer = config.targetIp
         )
 
         UpdateCard(

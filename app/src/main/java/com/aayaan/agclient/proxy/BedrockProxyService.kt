@@ -3,9 +3,12 @@ package com.aayaan.agclient.proxy
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.aayaan.agclient.AGClientApplication
 import com.aayaan.agclient.MainActivity
 import com.aayaan.agclient.R
@@ -40,8 +43,12 @@ class BedrockProxyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        acquireWakeLock()
+        try {
+            createNotificationChannel()
+            acquireWakeLock()
+        } catch (t: Throwable) {
+            Logger.e("ProxyService", "Error during onCreate", t)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -52,7 +59,24 @@ class BedrockProxyService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, createNotification("Starting proxy server..."))
+        try {
+            val notification = createNotification("Starting proxy server...")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (t: Throwable) {
+            Logger.e("ProxyService", "Failed to startForeground", t)
+            _serviceState.value = ServiceState.ERROR
+            return START_NOT_STICKY
+        }
+
         startProxy()
 
         return START_STICKY
@@ -66,7 +90,7 @@ class BedrockProxyService : Service() {
                 val config = app.configManager.currentConfig
 
                 val bindAddress = InetSocketAddress("0.0.0.0", config.localBindPort)
-                val group = NioEventLoopGroup()
+                val group = NioEventLoopGroup(2)
                 eventLoopGroup = group
 
                 // Configure LAN Discovery Pong
@@ -114,10 +138,10 @@ class BedrockProxyService : Service() {
 
                 updateNotification("Proxy Active on port ${config.localBindPort} - LAN Broadcast On")
 
-            } catch (e: Exception) {
-                Logger.e("ProxyService", "Failed to start Bedrock proxy", e)
+            } catch (t: Throwable) {
+                Logger.e("ProxyService", "Failed to start Bedrock proxy", t)
                 _serviceState.value = ServiceState.ERROR
-                updateNotification("Proxy failed to start: ${e.message}")
+                updateNotification("Proxy failed to start: ${t.message}")
             }
         }
     }
@@ -132,20 +156,24 @@ class BedrockProxyService : Service() {
             eventLoopGroup?.shutdownGracefully()
             serverChannel = null
             eventLoopGroup = null
-        } catch (e: Exception) {
-            Logger.e("ProxyService", "Error stopping proxy server", e)
+        } catch (t: Throwable) {
+            Logger.e("ProxyService", "Error stopping proxy server", t)
         }
         _serviceState.value = ServiceState.STOPPED
         releaseWakeLock()
     }
 
     private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "AGClient::ProxyWakeLock"
-        ).apply {
-            acquire(10 * 60 * 60 * 1000L) // 10 hours
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "AGClient::ProxyWakeLock"
+            ).apply {
+                acquire(10 * 60 * 60 * 1000L) // 10 hours
+            }
+        } catch (t: Throwable) {
+            Logger.e("ProxyService", "Error acquiring wake lock", t)
         }
     }
 
@@ -192,7 +220,7 @@ class BedrockProxyService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("AG Client (MITM Proxy)")
             .setContentText(content)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Proxy", stopPendingIntent)
             .setOngoing(true)

@@ -26,6 +26,13 @@ class AGClientApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Logger.e("CrashHandler", "Uncaught exception on thread ${thread.name}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         Logger.i("AGClient", "Initializing AG Client Beta application...")
 
         xboxAuthManager = XboxAuthManager(this)

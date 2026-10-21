@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import android.widget.Toast
+import com.aayaan.agclient.utils.Logger
 import com.aayaan.agclient.proxy.BedrockProxyService
 import com.aayaan.agclient.proxy.ServiceState
 import com.aayaan.agclient.ui.screens.*
@@ -142,16 +144,25 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startProxyService() {
-        val intent = Intent(this, BedrockProxyService::class.java).apply {
-            action = BedrockProxyService.ACTION_START
+        try {
+            val intent = Intent(this, BedrockProxyService::class.java).apply {
+                action = BedrockProxyService.ACTION_START
+            }
+            ContextCompat.startForegroundService(this, intent)
+        } catch (t: Throwable) {
+            Logger.e("MainActivity", "Failed to start proxy service", t)
+            Toast.makeText(this, "Failed to start proxy: ${t.message}", Toast.LENGTH_LONG).show()
         }
-        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun stopProxyService() {
-        val intent = Intent(this, BedrockProxyService::class.java).apply {
-            action = BedrockProxyService.ACTION_STOP
+        try {
+            val intent = Intent(this, BedrockProxyService::class.java).apply {
+                action = BedrockProxyService.ACTION_STOP
+            }
+            startService(intent)
+        } catch (t: Throwable) {
+            Logger.e("MainActivity", "Failed to stop proxy service", t)
         }
-        startService(intent)
     }
 }

@@ -215,6 +215,7 @@ class BedrockProxyService : Service() {
     companion object {
         const val CHANNEL_ID = "ag_client_proxy_channel"
         const val NOTIFICATION_ID = 1001
+        const val ACTION_START = "com.aayaan.agclient.action.START_PROXY"
         const val ACTION_STOP = "com.aayaan.agclient.action.STOP_PROXY"
 
         private val _serviceState = MutableStateFlow(ServiceState.STOPPED)

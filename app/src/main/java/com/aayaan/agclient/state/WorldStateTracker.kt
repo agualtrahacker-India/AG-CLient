@@ -106,7 +106,7 @@ class WorldStateTracker {
                     motion = packet.motion,
                     yaw = packet.rotation.y,
                     pitch = packet.rotation.x,
-                    headYaw = packet.rotation.z
+                    headYaw = packet.headRotation
                 )
                 entityTracker.addEntity(entity)
             }

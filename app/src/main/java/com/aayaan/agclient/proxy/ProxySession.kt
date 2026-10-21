@@ -193,7 +193,7 @@ class ProxySession(
         if (config.isGhostMode) return // Ghost mode suppresses proxy messages
         val textPacket = TextPacket().apply {
             type = TextPacket.Type.RAW
-            this.message = message
+            setMessage(message)
             isNeedsTranslation = false
             xuid = ""
             sourceName = ""

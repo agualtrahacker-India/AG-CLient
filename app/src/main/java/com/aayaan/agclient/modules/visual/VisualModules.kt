@@ -45,9 +45,9 @@ class PlayerEspModule : Module(
         if (!isEnabled) return PacketSignal.UNHANDLED
         if (packet is SetEntityDataPacket) {
             try {
-                packet.metadata.setFlag(EntityFlag.GLOWING, true)
+                packet.metadata.setFlag(EntityFlag.ALWAYS_SHOW_NAME, true)
                 if (nametagsProp.value) {
-                    packet.metadata.setFlag(EntityFlag.ALWAYS_SHOW_NAMETAG, true)
+                    packet.metadata.setFlag(EntityFlag.CAN_SHOW_NAME, true)
                 }
             } catch (_: Exception) {}
         }
@@ -141,7 +141,7 @@ class NoInvisibleModule : Module(
             try {
                 packet.metadata.setFlag(EntityFlag.INVISIBLE, false)
             } catch (_: Exception) {}
-        } else if (packet is MobEffectPacket && packet.eventId == MobEffectPacket.Event.ADD) {
+        } else if (packet is MobEffectPacket && packet.event == MobEffectPacket.Event.ADD) {
             if (packet.effectId == 14) { // Invisibility effect ID
                 return PacketSignal.HANDLED // Strip invisibility effect!
             }

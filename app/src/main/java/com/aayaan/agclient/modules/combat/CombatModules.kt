@@ -308,7 +308,7 @@ class AutoTotemModule : Module(
 
     override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
         if (!isEnabled) return PacketSignal.UNHANDLED
-        if (packet is EntityEventPacket && packet.type == EntityEventType.TOTEM_POP) {
+        if (packet is EntityEventPacket && packet.type == EntityEventType.CONSUME_TOTEM) {
             equipTotem(session)
         } else if (packet is UpdateAttributesPacket && packet.runtimeEntityId == session.worldState.playerState.runtimeEntityId) {
             for (attr in packet.attributes) {

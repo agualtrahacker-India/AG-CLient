@@ -41,6 +41,9 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 
     buildFeatures {
@@ -57,15 +60,23 @@ android {
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/io.netty.versions.properties"
             excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/LICENSE"
+            excludes += "META-INF/LICENSE.txt"
+            excludes += "META-INF/license.txt"
+            excludes += "META-INF/NOTICE"
+            excludes += "META-INF/NOTICE.txt"
+            excludes += "META-INF/notice.txt"
+            excludes += "META-INF/ASL2.0"
         }
     }
 }
 
 dependencies {
-    // CloudburstMC Bedrock Protocol
+    // CloudburstMC Bedrock Protocol & Math
     implementation("org.cloudburstmc.protocol:bedrock-connection:3.0.0.Beta14-SNAPSHOT")
     implementation("org.cloudburstmc.protocol:bedrock-codec:3.0.0.Beta14-SNAPSHOT")
     implementation("org.cloudburstmc.protocol:common:3.0.0.Beta14-SNAPSHOT")
+    implementation("org.cloudburstmc.math:immutable:2.0")
 
     // Kotlin Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")

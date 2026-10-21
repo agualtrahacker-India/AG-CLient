@@ -4,10 +4,43 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- LETTER 'A' (Neon Cyan with 3D Depth) -->
+    <!-- 'A' Base Shadow -->
+    <path
+        android:fillColor="#006070"
+        android:pathData="M37,28 L43,28 L55,77 L47,77 L43,62 L31,62 L27,77 L19,77 Z M37,39 L33,54 L41,54 Z" />
+
+    <!-- 'A' Main Facet (Vibrant Neon Cyan) -->
     <path
         android:fillColor="#00E5FF"
-        android:pathData="M30,30 L78,30 L78,42 L42,42 L42,50 L70,50 L70,62 L42,62 L42,78 L30,78 Z" />
+        android:pathData="M37,27 L43,27 L54,75 L46,75 L42,60 L32,60 L28,75 L20,75 Z M37,38 L33,53 L41,53 Z" />
+
+    <!-- 'A' Left Apex Highlight -->
     <path
-        android:fillColor="#7C4DFF"
-        android:pathData="M54,54 L84,54 L84,78 L54,78 L54,66 L72,66 L72,60 L54,60 Z" />
+        android:fillColor="#80F5FF"
+        android:pathData="M37,27 L40,27 L25,75 L20,75 Z" />
+
+
+    <!-- LETTER 'G' (Electric Purple with 3D Depth) -->
+    <!-- 'G' Base Shadow -->
+    <path
+        android:fillColor="#4C1D95"
+        android:pathData="M85,35 L77,28 L61,28 L53,35 L53,69 L61,77 L81,77 L88,71 L88,51 L68,51 L68,59 L79,59 L79,68 L63,68 L62,65 L62,39 L65,36 L75,36 L81,42 Z" />
+
+    <!-- 'G' Main Facet (Vibrant Electric Purple) -->
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M84,34 L76,27 L61,27 L53,34 L53,68 L61,75 L81,75 L87,69 L87,50 L68,50 L68,58 L78,58 L78,67 L63,67 L62,64 L62,38 L65,35 L74,35 L80,41 Z" />
+
+    <!-- 'G' Horizontal Spur Highlight -->
+    <path
+        android:fillColor="#C4B5FD"
+        android:pathData="M68,50 L87,50 L87,54 L68,54 Z" />
+
+    <!-- Center Bridge Accent Pip -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M48,56 L51,56 L51,60 L48,60 Z" />
+
 </vector>

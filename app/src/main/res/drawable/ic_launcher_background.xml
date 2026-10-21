@@ -4,7 +4,35 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Deep Space Midnight Background -->
     <path
-        android:fillColor="#0D1117"
+        android:fillColor="#090D16"
         android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Sleek Tech Shield / Hexagon Base -->
+    <path
+        android:fillColor="#111827"
+        android:pathData="M54,12 L90,32 L90,76 L54,96 L18,76 L18,32 Z" />
+
+    <!-- Subtle Inner Shield Stroke -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="1.5"
+        android:pathData="M54,15 L87,33.5 L87,74.5 L54,93 L21,74.5 L21,33.5 Z" />
+
+    <!-- Cyan Top Accent Glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.2"
+        android:strokeAlpha="0.3"
+        android:pathData="M54,15 L70,24 M21,33.5 L30,48" />
+
+    <!-- Purple Bottom Accent Glow -->
+    <path
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="1.2"
+        android:strokeAlpha="0.3"
+        android:pathData="M54,93 L70,84 M21,74.5 L37,84" />
+
 </vector>

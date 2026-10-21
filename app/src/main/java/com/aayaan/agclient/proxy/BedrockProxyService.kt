@@ -101,7 +101,7 @@ class BedrockProxyService : Service() {
                 // Configure LAN Discovery Pong
                 val pong = BedrockPong().apply {
                     edition("MCPE")
-                    motd("§bAG Client Beta §7[MITM Proxy]")
+                    motd("§bAG Client v2.0 §7[Proxy]")
                     subMotd("§aTarget: ${config.targetIp}:${config.targetPort}")
                     playerCount(1)
                     maximumPlayerCount(10)
@@ -109,8 +109,8 @@ class BedrockProxyService : Service() {
                     nintendoLimited(false)
                     ipv4Port(config.localBindPort)
                     ipv6Port(config.localBindPort)
-                    version("1.20.80")
-                    protocolVersion(671)
+                    version("1.21.20")
+                    protocolVersion(712)
                 }
 
                 val bootstrap = ServerBootstrap()
@@ -122,6 +122,13 @@ class BedrockProxyService : Service() {
                         override fun initSession(session: BedrockServerSession) {
                             val remoteAddress = session.socketAddress as? InetSocketAddress ?: return
                             Logger.i("ProxyService", "Local Minecraft client connected: $remoteAddress")
+
+                            // Crucial: Assign initial codec so session can serialize/deserialize packets without throwing
+                            val initialCodec = BedrockCodecFinder.getDefaultCodec()
+                            if (initialCodec != null) {
+                                session.codec = initialCodec
+                                Logger.i("ProxyService", "Assigned initial codec (${initialCodec.protocolVersion}) to local session.")
+                            }
 
                             val proxySession = ProxySession(
                                 serverSession = session,
@@ -193,12 +200,26 @@ class BedrockProxyService : Service() {
                         put(motdBytes)
                     }.array()
 
-                    val targets = listOf(
+                    val targets = mutableListOf(
                         InetSocketAddress("255.255.255.255", 19132),
                         InetSocketAddress("255.255.255.255", 19133),
                         InetSocketAddress("127.0.0.1", 19132),
                         InetSocketAddress("127.0.0.1", 19133)
                     )
+
+                    try {
+                        val interfaces = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+                        for (intf in interfaces) {
+                            if (!intf.isLoopback && intf.isUp) {
+                                for (intfAddr in intf.interfaceAddresses) {
+                                    intfAddr.broadcast?.let { bcast ->
+                                        targets.add(InetSocketAddress(bcast, 19132))
+                                        targets.add(InetSocketAddress(bcast, 19133))
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
 
                     for (target in targets) {
                         try {

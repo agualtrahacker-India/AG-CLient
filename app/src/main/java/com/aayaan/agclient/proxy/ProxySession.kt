@@ -114,6 +114,13 @@ class ProxySession(
         clientProtocolVersion = packet.protocolVersion
         Logger.i("ProxySession", "Client requested network settings. Protocol Version: $clientProtocolVersion")
 
+        // Dynamically assign the exact matching BedrockCodec for this client's protocol version
+        val matchedCodec = BedrockCodecFinder.findCodec(clientProtocolVersion)
+        if (matchedCodec != null) {
+            serverSession.codec = matchedCodec
+            Logger.i("ProxySession", "Updated serverSession codec to protocol: ${matchedCodec.protocolVersion}")
+        }
+
         val response = NetworkSettingsPacket().apply {
             compressionAlgorithm = PacketCompressionAlgorithm.ZLIB
             compressionThreshold = 512

@@ -32,6 +32,14 @@ fun QuickConnectCard(
 ) {
     val context = LocalContext.current
     var wifiIp by remember { mutableStateOf<String?>(null) }
+    var targetStatus by remember { mutableStateOf<com.aayaan.agclient.utils.ServerStatus?>(null) }
+    var isCheckingTarget by remember { mutableStateOf(false) }
+
+    LaunchedEffect(targetServer, targetPort) {
+        isCheckingTarget = true
+        targetStatus = com.aayaan.agclient.utils.ServerPinger.pingServer(targetServer, targetPort)
+        isCheckingTarget = false
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -106,6 +114,8 @@ fun QuickConnectCard(
                 }
             }
 
+            val primaryIp = wifiIp ?: "127.0.0.1"
+
             // IP & Port Details Box
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkBackground),
@@ -122,12 +132,12 @@ fun QuickConnectCard(
                     ) {
                         Column {
                             Text(
-                                text = "Server IP (Local)",
+                                text = if (wifiIp != null) "Server Address (Device IP)" else "Server Address (Local)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = "127.0.0.1",
+                                text = primaryIp,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
@@ -157,15 +167,14 @@ fun QuickConnectCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Wi-Fi / LAN IP (Other devices):",
+                                text = "Loopback fallback:",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = "$wifiIp",
+                                text = "127.0.0.1",
                                 style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium,
-                                color = TextPrimary
+                                color = TextSecondary
                             )
                         }
                     }
@@ -180,9 +189,9 @@ fun QuickConnectCard(
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Server IP", "127.0.0.1")
+                        val clip = ClipData.newPlainText("Server IP", primaryIp)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied IP: 127.0.0.1", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Copied IP: $primaryIp", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
@@ -236,10 +245,10 @@ fun QuickConnectCard(
                             color = TextPrimary
                         )
                         Text(
-                            text = "1. Start the proxy above.\n" +
+                            text = "1. Start proxy above.\n" +
                                     "2. Tap 'Copy IP' & 'Launch Minecraft'.\n" +
                                     "3. In Minecraft: Play ➡️ Servers tab ➡️ Scroll down & tap Add Server.\n" +
-                                    "4. Enter Name: AG Client | Server Address: 127.0.0.1 | Port: $localPort.\n" +
+                                    "4. Enter Name: AG Client | Server Address: $primaryIp | Port: $localPort.\n" +
                                     "5. Tap Save & Join! (Saved in your server list forever).",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
@@ -274,8 +283,8 @@ fun QuickConnectCard(
                             )
                         }
                         Text(
-                            text = "• Open Minecraft ➡️ Tap Friends tab ➡️ Scroll to LAN Games.\n" +
-                                    "• Tap 'AG Client Beta' to join instantly with zero typing!",
+                            text = "• Open Minecraft ➡️ Tap Friends tab ➡️ Scroll down to LAN Games.\n" +
+                                    "• Tap 'AG Client v2.0' to join instantly with zero typing!",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

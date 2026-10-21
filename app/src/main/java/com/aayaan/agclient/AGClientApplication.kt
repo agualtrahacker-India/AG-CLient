@@ -6,6 +6,7 @@ import com.aayaan.agclient.commands.CommandManager
 import com.aayaan.agclient.config.ConfigManager
 import com.aayaan.agclient.gui.InGameGuiManager
 import com.aayaan.agclient.modules.ModuleManager
+import com.aayaan.agclient.updater.AutoUpdater
 import com.aayaan.agclient.utils.Logger
 
 class AGClientApplication : Application() {
@@ -20,6 +21,8 @@ class AGClientApplication : Application() {
         private set
     lateinit var commandManager: CommandManager
         private set
+    lateinit var autoUpdater: AutoUpdater
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -30,6 +33,7 @@ class AGClientApplication : Application() {
         moduleManager = ModuleManager(configManager)
         guiManager = InGameGuiManager(moduleManager)
         commandManager = CommandManager(moduleManager, configManager, guiManager)
+        autoUpdater = AutoUpdater(this)
 
         Logger.i("AGClient", "AG Client Beta core subsystems initialized successfully.")
     }

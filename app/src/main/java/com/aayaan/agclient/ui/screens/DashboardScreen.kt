@@ -12,7 +12,9 @@ import com.aayaan.agclient.config.ProxyConfig
 import com.aayaan.agclient.proxy.ServiceState
 import com.aayaan.agclient.ui.components.ServerConfigCard
 import com.aayaan.agclient.ui.components.ServiceControlCard
+import com.aayaan.agclient.ui.components.UpdateCard
 import com.aayaan.agclient.ui.components.XboxAuthCard
+import com.aayaan.agclient.updater.AutoUpdater
 
 @Composable
 fun DashboardScreen(
@@ -22,9 +24,11 @@ fun DashboardScreen(
     onStartService: () -> Unit,
     onStopService: () -> Unit,
     authManager: XboxAuthManager,
+    autoUpdater: AutoUpdater,
     modifier: Modifier = Modifier
 ) {
     val authState by authManager.authState.collectAsState()
+    val updateState by autoUpdater.updateState.collectAsState()
 
     Column(
         modifier = modifier
@@ -37,6 +41,13 @@ fun DashboardScreen(
             serviceState = serviceState,
             onStartService = onStartService,
             onStopService = onStopService
+        )
+
+        UpdateCard(
+            updateState = updateState,
+            onCheckUpdate = { autoUpdater.checkForUpdates() },
+            onDownloadUpdate = { url -> autoUpdater.startDownload(url) },
+            onInstallApk = { apk -> autoUpdater.installApk(apk) }
         )
 
         ServerConfigCard(

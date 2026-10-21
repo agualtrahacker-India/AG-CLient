@@ -48,6 +48,9 @@ class MainActivity : ComponentActivity() {
 
         val app = application as AGClientApplication
 
+        // Check for updates quietly in background on launch
+        app.autoUpdater.checkForUpdates(silent = true)
+
         setContent {
             AGClientTheme {
                 val serviceState by BedrockProxyService.serviceState.collectAsState()
@@ -116,7 +119,8 @@ class MainActivity : ComponentActivity() {
                                 serviceState = serviceState,
                                 onStartService = { startProxyService() },
                                 onStopService = { stopProxyService() },
-                                authManager = app.xboxAuthManager
+                                authManager = app.xboxAuthManager,
+                                autoUpdater = app.autoUpdater
                             )
                             AppTab.MODULES -> ModulesScreen(
                                 moduleManager = app.moduleManager

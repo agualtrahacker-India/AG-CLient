@@ -21,9 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import android.widget.Toast
 import com.aayaan.agclient.utils.Logger
-import android.net.VpnService
 import com.aayaan.agclient.proxy.BedrockProxyService
-import com.aayaan.agclient.proxy.BedrockVpnService
 import com.aayaan.agclient.proxy.ServiceState
 import com.aayaan.agclient.ui.screens.*
 import com.aayaan.agclient.ui.theme.*
@@ -39,46 +37,6 @@ class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
-
-    private val vpnPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                startVpnServiceInternal()
-            } else {
-                Toast.makeText(this, "VPN permission required for 1-tap Hive redirect", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-    fun startVpnService() {
-        val intent = VpnService.prepare(this)
-        if (intent != null) {
-            vpnPermissionLauncher.launch(intent)
-        } else {
-            startVpnServiceInternal()
-        }
-    }
-
-    private fun startVpnServiceInternal() {
-        try {
-            val intent = Intent(this, BedrockVpnService::class.java).apply {
-                action = BedrockVpnService.ACTION_START
-            }
-            ContextCompat.startForegroundService(this, intent)
-        } catch (e: Exception) {
-            Logger.e("MainActivity", "Failed to start VPN service", e)
-        }
-    }
-
-    fun stopVpnService() {
-        try {
-            val intent = Intent(this, BedrockVpnService::class.java).apply {
-                action = BedrockVpnService.ACTION_STOP
-            }
-            startService(intent)
-        } catch (e: Exception) {
-            Logger.e("MainActivity", "Failed to stop VPN service", e)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,7 +56,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             AGClientTheme {
                 val serviceState by BedrockProxyService.serviceState.collectAsState()
-                val vpnActive by BedrockVpnService.vpnState.collectAsState()
                 var currentTab by remember { mutableStateOf(AppTab.DASHBOARD) }
                 var config by remember { mutableStateOf(app.configManager.currentConfig) }
 
@@ -165,15 +122,7 @@ class MainActivity : ComponentActivity() {
                                 onStartService = { startProxyService() },
                                 onStopService = { stopProxyService() },
                                 authManager = app.xboxAuthManager,
-                                autoUpdater = app.autoUpdater,
-                                vpnActive = vpnActive,
-                                onToggleVpn = { enabled ->
-                                    if (enabled) {
-                                        startVpnService()
-                                    } else {
-                                        stopVpnService()
-                                    }
-                                }
+                                autoUpdater = app.autoUpdater
                             )
                             AppTab.MODULES -> ModulesScreen(
                                 moduleManager = app.moduleManager

@@ -3,6 +3,7 @@ package com.aayaan.agclient.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aayaan.agclient.ui.theme.*
 import java.net.Inet4Address
@@ -23,13 +25,13 @@ import java.util.Collections
 
 @Composable
 fun QuickConnectCard(
-    vpnActive: Boolean,
-    onToggleVpn: (Boolean) -> Unit,
     targetServer: String = "geo.hivebedrock.network",
+    targetPort: Int = 19132,
+    localPort: Int = 19132,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var localIp by remember { mutableStateOf("127.0.0.1") }
+    var wifiIp by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         try {
@@ -39,8 +41,8 @@ fun QuickConnectCard(
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         val host = addr.hostAddress
-                        if (!host.isNullOrEmpty()) {
-                            localIp = host
+                        if (!host.isNullOrEmpty() && !host.startsWith("10.8.")) {
+                            wifiIp = host
                             break
                         }
                     }
@@ -58,8 +60,9 @@ fun QuickConnectCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -71,113 +74,236 @@ fun QuickConnectCard(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = "🎮 How to Join in Minecraft (No IP Typing!)",
+                    text = "Connect Minecraft to AG Client",
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = NeonCyan
                 )
             }
 
-            // Option 1: 1-Tap Official Server Redirect
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
+            // Upstream Target Info
+            Surface(
+                color = DarkCard,
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = AccentGreen,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Forwarding to: $targetServer:$targetPort",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                }
+            }
+
+            // IP & Port Details Box
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkBackground),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, DarkCardBorder, RoundedCornerShape(10.dp))
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column {
                             Text(
-                                text = "Option 1: 1-Tap Auto-Server Intercept (VPN Mode)",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Auto-intercepts whichever server you tap in Minecraft!",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NeonCyan
-                            )
-                            Text(
-                                text = "Zero IP typing. Restricted to Minecraft only — your normal phone apps (YouTube, WhatsApp, Browser) run at full speed untouched!",
+                                text = "Server IP (Local)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
-                        }
-                        Switch(
-                            checked = vpnActive,
-                            onCheckedChange = { onToggleVpn(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = DarkBackground,
-                                checkedTrackColor = NeonCyan
+                            Text(
+                                text = "127.0.0.1",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan
                             )
-                        )
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "Port",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "$localPort",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentAmber
+                            )
+                        }
                     }
 
-                    if (vpnActive) {
-                        Text(
-                            text = "✓ Ready! Open Minecraft -> Tap ANY server (Hive, CubeCraft, NetherGames, etc.) to play with AG Client hacks enabled!",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = AccentGreen
-                        )
+                    if (wifiIp != null) {
+                        Divider(color = DarkCardBorder)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Wi-Fi / LAN IP (Other devices):",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "$wifiIp",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
+                            )
+                        }
                     }
                 }
             }
 
-            // Option 2: Friends Tab (LAN Games)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                modifier = Modifier.fillMaxWidth()
+            // Quick Action Buttons (Copy IP & Launch Minecraft)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Server IP", "127.0.0.1")
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Copied IP: 127.0.0.1", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(NeonCyan)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy IP",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Copy IP", color = NeonCyan)
+                }
+
+                Button(
+                    onClick = {
+                        launchMinecraft(context)
+                    },
+                    modifier = Modifier.weight(1.2f),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Launch Minecraft",
+                        tint = DarkBackground,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "Launch Minecraft", color = DarkBackground, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Step-by-Step Instructions
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Method 1: Add Server (1-time setup)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Default.Wifi, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(16.dp))
                         Text(
-                            text = "Option 2: Friends Tab (LAN Game Discovery)",
+                            text = "📌 Method 1: Add Server in Minecraft (One-time Setup)",
                             style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
+                        Text(
+                            text = "1. Start the proxy above.\n" +
+                                    "2. Tap 'Copy IP' & 'Launch Minecraft'.\n" +
+                                    "3. In Minecraft: Play ➡️ Servers tab ➡️ Scroll down & tap Add Server.\n" +
+                                    "4. Enter Name: AG Client | Server Address: 127.0.0.1 | Port: $localPort.\n" +
+                                    "5. Tap Save & Join! (Saved in your server list forever).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
                     }
-                    Text(
-                        text = "• Open Minecraft -> Tap 'Friends' tab -> Scroll down to 'LAN Games' -> Tap 'AG Client Beta'.\n• Automatically connects you directly to $targetServer!",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
                 }
-            }
 
-            // Option 3: Manual Servers Tab
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkBackground),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Method 2: Friends Tab LAN Games
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        Text(text = "Option 3 (Saved Server):", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                        Text(text = "$localIp:19132", style = MaterialTheme.typography.bodyMedium, color = AccentAmber)
-                    }
-                    IconButton(
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("Server IP", localIp)
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "Copied IP: $localIp", Toast.LENGTH_SHORT).show()
-                        }
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy IP", tint = NeonCyan)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = AccentGreen,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "⚡ Method 2: Friends Tab (LAN Game Discovery)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        }
+                        Text(
+                            text = "• Open Minecraft ➡️ Tap Friends tab ➡️ Scroll to LAN Games.\n" +
+                                    "• Tap 'AG Client Beta' to join instantly with zero typing!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
                     }
                 }
             }
         }
     }
+}
+
+private fun launchMinecraft(context: Context) {
+    val pm = context.packageManager
+    val candidatePackages = listOf(
+        "com.mojang.minecraftpe",
+        "com.mojang.minecraftpe.beta",
+        "com.mojang.minecrafttrialpe",
+        "com.microsoft.minecraft"
+    )
+
+    for (pkg in candidatePackages) {
+        val launchIntent = pm.getLaunchIntentForPackage(pkg)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
+            Toast.makeText(context, "Opening Minecraft...", Toast.LENGTH_SHORT).show()
+            return
+        }
+    }
+
+    Toast.makeText(context, "Minecraft is not installed on this device", Toast.LENGTH_LONG).show()
 }

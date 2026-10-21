@@ -26,8 +26,6 @@ fun DashboardScreen(
     onStopService: () -> Unit,
     authManager: XboxAuthManager,
     autoUpdater: AutoUpdater,
-    vpnActive: Boolean = false,
-    onToggleVpn: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val authState by authManager.authState.collectAsState()
@@ -47,9 +45,9 @@ fun DashboardScreen(
         )
 
         QuickConnectCard(
-            vpnActive = vpnActive,
-            onToggleVpn = onToggleVpn,
-            targetServer = config.targetIp
+            targetServer = config.targetIp,
+            targetPort = config.targetPort,
+            localPort = config.localBindPort
         )
 
         UpdateCard(

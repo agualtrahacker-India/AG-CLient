@@ -205,3 +205,15 @@ AG Client includes a built-in background auto-updater:
 ## ⚖️ Disclaimer
 
 AG Client is developed as an educational tool and advanced network proxy research project for Minecraft: Bedrock Edition protocol reverse-engineering. Always adhere to the terms of service and rules of the specific servers you connect to.
+
+---
+
+## 📜 Author & License
+
+* **Lead Developer & Creator:** **Aayaan Ghosh** ([@agualtrahacker-India](https://github.com/agualtrahacker-India))
+* **License:** [GNU General Public License v3.0 (GPL-3.0)](LICENSE)
+
+### What this license guarantees:
+1. **Permanent Author Credit:** You are credited as the creator and original author of this project. Any forks or copies must retain this copyright notice.
+2. **Full Author Control:** As the copyright holder, you maintain 100% control over the repository, its releases, features, and official builds.
+3. **Copyleft Protection (Always Free & Open-Source):** Anyone who uses, modifies, or forks this code **must** keep their version open-source and free under GPL-3.0. No corporation or third party can legally steal your code to make it proprietary or closed-source.

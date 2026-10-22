@@ -1,7 +1,7 @@
-# 🛡️ AG Client (v2.5.0) - Standalone Minecraft Bedrock Proxy for Android
+# 🛡️ AG Client (v2.6.0) - Standalone Minecraft Bedrock Proxy for Android
 
 [![Android CI & Release](https://github.com/agualtrahacker-India/AG-CLient/actions/workflows/android-build.yml/badge.svg)](https://github.com/agualtrahacker-India/AG-CLient/actions)
-![Version](https://img.shields.io/badge/Release-v2.5.0-blueviolet)
+![Version](https://img.shields.io/badge/Release-v2.6.0-blueviolet)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-brightgreen)
 ![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2014%20(API%2034)-blue)
 ![Bedrock Protocol](https://img.shields.io/badge/Bedrock%20Protocol-CloudburstMC%201.21%2B-purple)
@@ -14,29 +14,31 @@
 
 ---
 
-## ✨ What's New in v2.5.0
+## ✨ What's New in v2.6.0
 
-* 🛡️ **Virtual Sandbox Router (`10.0.0.1`)**: Built-in local virtual network sandbox on your phone. Solves mobile data (SIM Net) loopback drops and carrier CGNAT timeouts. Connect without needing a Wi-Fi router!
+* 🛠️ **Fixed Virtual Sandbox Packet Routing (`10.0.0.1`)**: Fixed critical reverse IP routing bug where return UDP packets had inverted source addresses, causing Android kernel to drop packets. Every packet now reaches Minecraft instantly.
+* ⚡ **Per-Port Multiplexed Relay Sockets**: Each Minecraft client UDP port now has its own protected datagram relay channel, preventing port collision during server list pings and joins.
+* 🧮 **Complete RFC UDP & IPv4 Checksums**: Handcrafted checksum algorithms (RFC 768 / RFC 791) ensuring zero packet dropping by cellular/Android BPF filters.
+* 🛡️ **Zero-Failure Fallback Target**: If no server is typed in, AG Client automatically connects to `geo.hivebedrock.network:19132` instead of aborting the connection.
+* 🔄 **Handshake Pipeline Support**: Added explicit forwarding for `ClientToServerHandshakePacket` to maintain protocol synchronization.
 * 🌐 **Full Internet Retention in Sandbox**: Minecraft retains 100% normal internet access—Xbox Live sign-in, Microsoft account authentication, custom skins, and Marketplace work flawlessly while routing through the sandbox.
 * 💬 **In-Game Join Welcome & Attribution**: When spawning on any server, a private message is sent to your chat:
   ```text
   ----------------------------------------
-  AG Client v2.5.0 - Made by Aayaan Ghosh
+  AG Client v2.6.0 - Made by Aayaan Ghosh
   Connected to server successfully!
   Type .help or /help to see command lists.
   ----------------------------------------
   ```
 * 📜 **Lunar Proxy Style Chat Commands**: Running `.help`, `/help`, `.cmds`, or `/commands` in chat instantly prints all 70 commands grouped by category (`Core`, `Combat`, `Movement`, `Visual & World`) directly into chat text (clean, non-intrusive, no modal popup).
-* ⚡ **Synchronized One-Tap Sandbox & Proxy**: Starting the Virtual Sandbox automatically starts the proxy service on local bind port `19133`.
 * 📱 **Dynamic Quick Connect Card**: The dashboard automatically switches between Virtual Sandbox IP (`10.0.0.1`) and Local Loopback (`127.0.0.1`) / Wi-Fi IP with 1-tap clipboard copying.
-* 🧹 **Zero Hardcoded/Preset Servers**: The server list stores only the servers you actually join—no unwanted default servers.
 
 ---
 
 ## 🚀 Complete Quick Start & Connection Guide
 
 ### 1. Installation
-1. Download the latest **`AG-Client-v2.5.0-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
+1. Download the latest **`AG-Client-v2.6.0-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
 2. Install the APK on your Android device (Play Protect verifies it is clean and safe).
 
 ---

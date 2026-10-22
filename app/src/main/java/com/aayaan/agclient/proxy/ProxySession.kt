@@ -84,6 +84,13 @@ class ProxySession(
             return PacketSignal.HANDLED
         }
 
+        // 0.1 Intercept Client Encryption Handshake response
+        if (packet is ClientToServerHandshakePacket) {
+            Logger.i("ProxySession", "Intercepted ClientToServerHandshakePacket from client. Forwarding upstream.")
+            clientSession?.sendPacket(packet)
+            return PacketSignal.HANDLED
+        }
+
         // 1. Intercept Commands (Private Chat Filter)
         if (commandManager.handleClientPacket(packet, this) == PacketSignal.HANDLED) {
             return PacketSignal.HANDLED
@@ -142,18 +149,9 @@ class ProxySession(
         cachedLoginPacket = packet
 
         // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
-        val targetHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
-        val targetPort = if (DynamicTargetTracker.activeTargetHost != null) DynamicTargetTracker.activeTargetPort else config.targetPort
-
-        if (targetHost.isBlank()) {
-            Logger.w("ProxySession", "Connection aborted: Target server address is empty.")
-            try {
-                serverSession.disconnect("§c[AG Client] Target Server is Empty!\n§ePlease enter your destination server IP & port in the AG Client app.")
-            } catch (_: Exception) {
-                serverSession.disconnect()
-            }
-            return
-        }
+        val rawHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
+        val targetHost = if (rawHost.isBlank()) "geo.hivebedrock.network" else rawHost
+        val targetPort = if (DynamicTargetTracker.activeTargetHost != null) DynamicTargetTracker.activeTargetPort else (if (config.targetPort > 0) config.targetPort else 19132)
 
         val targetAddress = InetSocketAddress(targetHost, targetPort)
         Logger.i("ProxySession", "Connecting upstream to target: $targetHost:$targetPort")
@@ -258,7 +256,7 @@ class ProxySession(
     private fun sendWelcomeMessage() {
         if (config.isGhostMode) return
         sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.5.0 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§b§lAG Client §fv2.6.0 §7- §a§lMade by Aayaan Ghosh")
         sendChatToClient("§aConnected to server successfully!")
         sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
         sendChatToClient("§8§m----------------------------------------")

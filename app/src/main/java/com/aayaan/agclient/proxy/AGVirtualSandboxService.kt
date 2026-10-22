@@ -23,21 +23,24 @@ import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
 
 class AGVirtualSandboxService : VpnService() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var vpnInterface: ParcelFileDescriptor? = null
     private var isRunning = false
-
-    @Volatile
-    private var lastClientPort = 0
-    @Volatile
-    private var lastDstPort = 19133
-    @Volatile
-    private var lastDstIp: ByteArray? = null
-
     private var ipIdCounter = 0
+
+    private val clientRoutes = ConcurrentHashMap<Int, ClientRoute>()
+
+    private class ClientRoute(
+        val clientPort: Int,
+        val serverPort: Int,
+        val serverIp: ByteArray,
+        val socket: DatagramSocket,
+        val job: Job
+    )
 
     companion object {
         const val ACTION_START = "com.aayaan.agclient.SANDBOX_START"
@@ -75,7 +78,7 @@ class AGVirtualSandboxService : VpnService() {
         isRunning = true
         _isSandboxRunning.value = true
 
-        val notification = buildNotification("Virtual Sandbox Active - Auto-Routing Minecraft")
+        val notification = buildNotification("Virtual Sandbox Active (10.0.0.1:19133)")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
@@ -93,14 +96,13 @@ class AGVirtualSandboxService : VpnService() {
 
         scope.launch {
             try {
-                Logger.i("VirtualSandbox", "Starting local virtual network sandbox for Minecraft...")
+                Logger.i("VirtualSandbox", "Establishing local virtual network sandbox (10.0.0.2 / 10.0.0.1)...")
                 val builder = Builder()
                     .setSession("AG Client Virtual Sandbox")
                     .addAddress("10.0.0.2", 24)
                     .addRoute("10.0.0.0", 24)
                     .setMtu(1400)
 
-                // Route only Minecraft packages through sandbox
                 val mcPackages = listOf(
                     "com.mojang.minecraftpe",
                     "com.mojang.minecraftpe.beta",
@@ -118,7 +120,6 @@ class AGVirtualSandboxService : VpnService() {
                 vpnInterface = builder.establish()
                 Logger.i("VirtualSandbox", "Virtual network sandbox established (10.0.0.2).")
 
-                // Start bidirectional packet relay loop
                 runPacketRelayLoop()
 
             } catch (e: Exception) {
@@ -133,16 +134,6 @@ class AGVirtualSandboxService : VpnService() {
         val inputStream = FileInputStream(pfd.fileDescriptor)
         val outputStream = FileOutputStream(pfd.fileDescriptor)
 
-        val tunnelSocket = try {
-            DatagramSocket().apply {
-                protect(this)
-            }
-        } catch (e: Exception) {
-            Logger.e("VirtualSandbox", "Failed to create protected datagram socket", e)
-            return
-        }
-
-        // Direction 1: Minecraft -> TUN -> Sandbox -> Local Bedrock Proxy (127.0.0.1:19133)
         scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(32768)
             val proxyTarget = InetSocketAddress("127.0.0.1", 19133)
@@ -168,6 +159,11 @@ class AGVirtualSandboxService : VpnService() {
                     val protocol = buffer[9].toInt() and 0xFF
                     if (protocol != 17) continue // UDP only
 
+                    // Extract IPs: Bytes 12..15 = Source IP (Minecraft), Bytes 16..19 = Dest IP (10.0.0.1)
+                    val srcIp = byteArrayOf(buffer[12], buffer[13], buffer[14], buffer[15])
+                    val dstIp = byteArrayOf(buffer[16], buffer[17], buffer[18], buffer[19])
+
+                    // Extract Ports
                     val srcPort = ((buffer[ihl].toInt() and 0xFF) shl 8) or (buffer[ihl + 1].toInt() and 0xFF)
                     val dstPort = ((buffer[ihl + 2].toInt() and 0xFF) shl 8) or (buffer[ihl + 3].toInt() and 0xFF)
 
@@ -175,58 +171,68 @@ class AGVirtualSandboxService : VpnService() {
                     val payloadLength = length - payloadOffset
                     if (payloadLength <= 0) continue
 
-                    lastClientPort = srcPort
-                    lastDstPort = dstPort
-                    lastDstIp = byteArrayOf(buffer[12], buffer[13], buffer[14], buffer[15])
-
-                    // Forward UDP packet payload directly to AG Client Bedrock Proxy
+                    // Dedicated multiplexed route per clientPort
+                    val route = getOrCreateRoute(srcPort, dstPort, dstIp, outputStream)
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
-                        tunnelSocket.send(packet)
+                        route.socket.send(packet)
                     } catch (_: Exception) {}
                 }
             } catch (_: Exception) {
             }
         }
+    }
 
-        // Direction 2: Local Bedrock Proxy (127.0.0.1:19133) -> Sandbox -> Minecraft TUN OutputStream
-        scope.launch(Dispatchers.IO) {
-            val replyBuffer = ByteArray(32768)
-            val replyPacket = DatagramPacket(replyBuffer, replyBuffer.size)
-
-            try {
-                while (isRunning && isActive) {
-                    try {
-                        tunnelSocket.receive(replyPacket)
-                    } catch (_: Exception) {
-                        continue
-                    }
-
-                    val replyLen = replyPacket.length
-                    val clientPort = lastClientPort
-                    if (replyLen > 0 && clientPort > 0) {
-                        val ipPacket = buildUdpIpPacket(
-                            srcIp = lastDstIp ?: byteArrayOf(10, 0, 0, 1),
-                            dstIp = byteArrayOf(10, 0, 0, 2),
-                            srcPort = lastDstPort,
-                            dstPort = clientPort,
-                            payload = replyPacket.data,
-                            payloadOffset = replyPacket.offset,
-                            payloadLength = replyLen
-                        )
-
-                        try {
-                            synchronized(outputStream) {
-                                outputStream.write(ipPacket)
-                                outputStream.flush()
-                            }
-                        } catch (_: Exception) {}
-                    }
-                }
-            } catch (_: Exception) {
-            } finally {
-                try { tunnelSocket.close() } catch (_: Exception) {}
+    private fun getOrCreateRoute(
+        clientPort: Int,
+        serverPort: Int,
+        serverIp: ByteArray,
+        outputStream: FileOutputStream
+    ): ClientRoute {
+        return clientRoutes.computeIfAbsent(clientPort) {
+            val relaySocket = DatagramSocket().apply {
+                protect(this)
             }
+
+            val job = scope.launch(Dispatchers.IO) {
+                val replyBuf = ByteArray(32768)
+                val replyPacket = DatagramPacket(replyBuf, replyBuf.size)
+
+                try {
+                    while (isRunning && isActive) {
+                        try {
+                            relaySocket.receive(replyPacket)
+                        } catch (_: Exception) {
+                            break
+                        }
+
+                        val replyLen = replyPacket.length
+                        if (replyLen > 0) {
+                            val ipPacket = buildUdpIpPacket(
+                                srcIp = serverIp, // 10.0.0.1 (the virtual server)
+                                dstIp = byteArrayOf(10, 0, 0, 2), // Minecraft
+                                srcPort = serverPort, // 19133
+                                dstPort = clientPort, // Minecraft client port
+                                payload = replyPacket.data,
+                                payloadOffset = replyPacket.offset,
+                                payloadLength = replyLen
+                            )
+
+                            try {
+                                synchronized(outputStream) {
+                                    outputStream.write(ipPacket)
+                                    outputStream.flush()
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    try { relaySocket.close() } catch (_: Exception) {}
+                }
+            }
+
+            ClientRoute(clientPort, serverPort, serverIp, relaySocket, job)
         }
     }
 
@@ -279,9 +285,11 @@ class AGVirtualSandboxService : VpnService() {
         val udpLength = 8 + payloadLength
         packet[24] = ((udpLength shr 8) and 0xFF).toByte()
         packet[25] = (udpLength and 0xFF).toByte()
-        // UDP Checksum 0 (valid in IPv4 RFC 768)
-        packet[26] = 0.toByte()
-        packet[27] = 0.toByte()
+
+        // Calculate valid UDP Checksum
+        val udpChecksum = computeUdpChecksum(srcIp, dstIp, srcPort, dstPort, payload, payloadOffset, payloadLength)
+        packet[26] = ((udpChecksum shr 8) and 0xFF).toByte()
+        packet[27] = (udpChecksum and 0xFF).toByte()
 
         // Payload
         System.arraycopy(payload, payloadOffset, packet, 28, payloadLength)
@@ -303,9 +311,61 @@ class AGVirtualSandboxService : VpnService() {
         return (sum.inv()) and 0xFFFF
     }
 
+    private fun computeUdpChecksum(
+        srcIp: ByteArray,
+        dstIp: ByteArray,
+        srcPort: Int,
+        dstPort: Int,
+        payload: ByteArray,
+        payloadOffset: Int,
+        payloadLength: Int
+    ): Int {
+        val udpLen = 8 + payloadLength
+        var sum = 0
+
+        // Pseudo-header:
+        sum += ((srcIp[0].toInt() and 0xFF) shl 8) or (srcIp[1].toInt() and 0xFF)
+        sum += ((srcIp[2].toInt() and 0xFF) shl 8) or (srcIp[3].toInt() and 0xFF)
+        sum += ((dstIp[0].toInt() and 0xFF) shl 8) or (dstIp[1].toInt() and 0xFF)
+        sum += ((dstIp[2].toInt() and 0xFF) shl 8) or (dstIp[3].toInt() and 0xFF)
+        sum += 17 // Protocol UDP
+        sum += udpLen
+
+        // UDP Header:
+        sum += srcPort
+        sum += dstPort
+        sum += udpLen
+
+        // Payload:
+        var i = payloadOffset
+        val end = payloadOffset + payloadLength
+        while (i < end - 1) {
+            sum += ((payload[i].toInt() and 0xFF) shl 8) or (payload[i + 1].toInt() and 0xFF)
+            i += 2
+        }
+        if (i < end) {
+            sum += (payload[i].toInt() and 0xFF) shl 8
+        }
+
+        while ((sum shr 16) > 0) {
+            sum = (sum and 0xFFFF) + (sum shr 16)
+        }
+
+        var csum = sum.inv() and 0xFFFF
+        if (csum == 0) csum = 0xFFFF
+        return csum
+    }
+
     private fun stopVirtualSandbox() {
         isRunning = false
         _isSandboxRunning.value = false
+
+        for ((_, route) in clientRoutes) {
+            try { route.job.cancel() } catch (_: Exception) {}
+            try { route.socket.close() } catch (_: Exception) {}
+        }
+        clientRoutes.clear()
+
         try {
             vpnInterface?.close()
             vpnInterface = null

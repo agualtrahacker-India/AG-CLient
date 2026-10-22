@@ -149,3 +149,75 @@ class NoInvisibleModule : Module(
         return PacketSignal.UNHANDLED
     }
 }
+
+// 8. Freelook
+class FreelookModule : Module(
+    name = "Freelook",
+    commandName = "freelook",
+    category = ModuleCategory.VISUAL,
+    description = "Uncouples the rendering camera from player character orientation"
+)
+
+// 9. ArrayList
+class ArrayListModule : Module(
+    name = "ArrayList",
+    commandName = "arraylist",
+    category = ModuleCategory.VISUAL,
+    description = "Renders an on-screen overlay of all currently enabled modules"
+)
+
+// 10. ArmorHud
+class ArmorHudModule : Module(
+    name = "ArmorHud",
+    commandName = "armorhud",
+    category = ModuleCategory.VISUAL,
+    description = "Displays current armor condition and durability metrics on the HUD"
+)
+
+// 11. InventoryHud
+class InventoryHudModule : Module(
+    name = "InventoryHud",
+    commandName = "inventoryhud",
+    category = ModuleCategory.VISUAL,
+    description = "Projects inventory slots and item counts onto the active HUD"
+)
+
+// 12. TargetHud
+class TargetHudModule : Module(
+    name = "TargetHud",
+    commandName = "targethud",
+    category = ModuleCategory.VISUAL,
+    description = "Displays current opponent metrics (health, armor, distance)"
+)
+
+// 13. BlockTracers
+class BlockTracersModule : Module(
+    name = "BlockTracers",
+    commandName = "blocktracers",
+    category = ModuleCategory.VISUAL,
+    description = "Renders lines pointing toward specific high-value blocks"
+)
+
+// 14. Schematic
+class SchematicModule : Module(
+    name = "Schematic",
+    commandName = "schematic",
+    category = ModuleCategory.VISUAL,
+    description = "Renders holographic blueprint layers directly into the local environment"
+)
+
+// 15. SusChunkFinder
+class SusChunkFinderModule : Module(
+    name = "SusChunkFinder",
+    commandName = "suschunkfinder",
+    category = ModuleCategory.VISUAL,
+    description = "Flags anomalous chunk states, player activity indicators, and hidden stashes"
+)
+
+// 16. Waypoints
+class WaypointsModule : Module(
+    name = "Waypoints",
+    commandName = "waypoints",
+    category = ModuleCategory.VISUAL,
+    description = "Renders directional beacons and distance calculations for saved map locations"
+)

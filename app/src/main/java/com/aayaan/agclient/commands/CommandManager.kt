@@ -83,7 +83,8 @@ class CommandManager(
         val ghostCommand = object : ProxyCommand {
             override val name = "ghost"
             override val description = "Toggle silent proxy mode"
-            override val usage = "/ghost"
+            override val usage = "/ghost or .ghost"
+            override val aliases = emptyList<String>()
 
             override fun execute(args: List<String>, session: ProxySession) {
                 session.config.isGhostMode = !session.config.isGhostMode
@@ -93,6 +94,112 @@ class CommandManager(
             }
         }
         registerCommand(ghostCommand)
+
+        // 4. .help
+        val helpCommand = object : ProxyCommand {
+            override val name = "help"
+            override val description = "Displays master list of commands and active modules"
+            override val usage = "/help or .help"
+            override val aliases = listOf("cmds", "commands")
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                session.sendChatToClient("§b--- AG Client v2.0 Commands (70) ---")
+                session.sendChatToClient("§eCore:§7 .help, .menu, .bind, .config, .disableall, .ghost, .relog, .panic, .coords")
+                session.sendChatToClient("§eCombat:§7 /reach, /killaura, /tpaura, /hitbox, /knockback, /knockbackdelay, /backtrack, /triggerbot, /autoclicker, /afkclicker, /doubleclick, /autototem, /autopotion, /autocrystal, /anticrystal, /autocart, /autoweb, /autojumpreset, /autocrit, /autoswitch, /maceswap, /macedmg, /shielddisabler, /aimassist, /autolog, /anchoraura, /multiaura, /infiniteaura, /projectileaimbot")
+                session.sendChatToClient("§eMovement:§7 /fly, /boatfly, /speed, /noslow, /airjump, /phase, /jetpack, /jumpboost, /levitate, /slowfalling, /taptp, /motionfly, /autorocket, /autoelytra, /bunnyhop, /step, /waterwalk, /glide")
+                session.sendChatToClient("§eVisual & World:§7 /freelook, /freecam, /arraylist, /armorhud, /inventoryhud, /targethud, /xray, /tracers, /blocktracers, /holeesp, /schematic, /chunkfinder, /suschunkfinder, /waypoints, /scaffold, /nuke, /automine, /autotoolswap, /fastinteract")
+            }
+        }
+        registerCommand(helpCommand)
+
+        // 5. .disableall
+        val disableAllCommand = object : ProxyCommand {
+            override val name = "disableall"
+            override val description = "Immediately toggles off all running client modules"
+            override val usage = "/disableall or .disableall"
+            override val aliases = listOf("stopall")
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                for (module in moduleManager.getAllModules()) {
+                    if (module.isEnabled) {
+                        module.disable(session)
+                    }
+                }
+                session.sendChatToClient("§c[Proxy] All active modules have been disabled.")
+            }
+        }
+        registerCommand(disableAllCommand)
+
+        // 6. .panic
+        val panicCommand = object : ProxyCommand {
+            override val name = "panic"
+            override val description = "Emergency shutdown that disables all modifications"
+            override val usage = "/panic or .panic"
+            override val aliases = emptyList<String>()
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                for (module in moduleManager.getAllModules()) {
+                    if (module.isEnabled) {
+                        module.disable(session)
+                    }
+                }
+                session.config.isGhostMode = true
+                session.sendChatToClient("§4[PANIC] All modifications disabled and wiped.")
+            }
+        }
+        registerCommand(panicCommand)
+
+        // 7. .coords
+        val coordsCommand = object : ProxyCommand {
+            override val name = "coords"
+            override val description = "Displays precise sub-block coordinates and direction vectors"
+            override val usage = "/coords or .coords"
+            override val aliases = listOf("pos", "location")
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                val pos = session.worldState.playerState.position
+                val yaw = session.worldState.playerState.yaw
+                val pitch = session.worldState.playerState.pitch
+                session.sendChatToClient("§a[Coords]§r X: §e%.2f§r Y: §e%.2f§r Z: §e%.2f§r | Yaw: §e%.1f§r Pitch: §e%.1f§r".format(pos.x, pos.y, pos.z, yaw, pitch))
+            }
+        }
+        registerCommand(coordsCommand)
+
+        // 8. .relog
+        val relogCommand = object : ProxyCommand {
+            override val name = "relog"
+            override val description = "Disconnects and immediately reconnects proxy session"
+            override val usage = "/relog or .relog"
+            override val aliases = emptyList<String>()
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                session.sendChatToClient("§e[Proxy] Reconnecting upstream session...")
+                session.clientSession?.disconnect()
+            }
+        }
+        registerCommand(relogCommand)
+
+        // 9. .bind
+        val bindCommand = object : ProxyCommand {
+            override val name = "bind"
+            override val description = "Assigns an activation key or button to a module"
+            override val usage = "/bind <module> <key> or .bind <module> <key>"
+            override val aliases = emptyList<String>()
+
+            override fun execute(args: List<String>, session: ProxySession) {
+                if (args.size < 2) {
+                    session.sendChatToClient("§cUsage: /bind <module> <key>")
+                    return
+                }
+                val module = moduleManager.getModuleByCommand(args[0])
+                if (module != null) {
+                    session.sendChatToClient("§a[Proxy] Bound ${module.name} to '${args[1]}'")
+                } else {
+                    session.sendChatToClient("§c[Proxy] Module '${args[0]}' not found.")
+                }
+            }
+        }
+        registerCommand(bindCommand)
     }
 
     fun registerCommand(command: ProxyCommand) {

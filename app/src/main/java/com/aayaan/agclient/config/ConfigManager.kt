@@ -64,4 +64,31 @@ class ConfigManager(private val context: Context) {
         val file = File(configDir, "$name.json")
         return file.delete()
     }
+
+    fun addServerToHistory(ip: String, port: Int = 19132, name: String = "") {
+        val trimmedIp = ip.trim()
+        if (trimmedIp.isBlank()) return
+
+        val existingIndex = currentConfig.serverHistory.indexOfFirst {
+            it.ip.equals(trimmedIp, ignoreCase = true) && it.port == port
+        }
+        if (existingIndex >= 0) {
+            val existing = currentConfig.serverHistory.removeAt(existingIndex)
+            val displayName = if (name.isNotBlank()) name else existing.name
+            currentConfig.serverHistory.add(0, existing.copy(name = displayName, lastJoined = System.currentTimeMillis()))
+        } else {
+            val displayName = if (name.isNotBlank()) name else trimmedIp
+            currentConfig.serverHistory.add(0, ServerHistoryItem(ip = trimmedIp, port = port, name = displayName, lastJoined = System.currentTimeMillis()))
+        }
+        saveConfig("default")
+        Logger.i("ConfigManager", "Added $trimmedIp:$port to server history.")
+    }
+
+    fun removeServerFromHistory(ip: String, port: Int = 19132) {
+        currentConfig.serverHistory.removeAll {
+            it.ip.equals(ip.trim(), ignoreCase = true) && it.port == port
+        }
+        saveConfig("default")
+        Logger.i("ConfigManager", "Removed $ip:$port from server history.")
+    }
 }

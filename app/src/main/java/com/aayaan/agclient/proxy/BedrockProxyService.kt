@@ -41,6 +41,7 @@ class BedrockProxyService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var serverChannel: Channel? = null
     private var eventLoopGroup: NioEventLoopGroup? = null
@@ -99,10 +100,11 @@ class BedrockProxyService : Service() {
                 eventLoopGroup = group
 
                 // Configure LAN Discovery Pong
+                val targetSubMotd = if (config.targetIp.isNotBlank()) "§aTarget: ${config.targetIp}:${config.targetPort}" else "§eSet Target in AG App"
                 val pong = BedrockPong().apply {
                     edition("MCPE")
                     motd("§bAG Client v2.0 §7[Proxy]")
-                    subMotd("§aTarget: ${config.targetIp}:${config.targetPort}")
+                    subMotd(targetSubMotd)
                     playerCount(1)
                     maximumPlayerCount(10)
                     gameType("Survival")
@@ -133,6 +135,7 @@ class BedrockProxyService : Service() {
                             val proxySession = ProxySession(
                                 serverSession = session,
                                 config = config,
+                                configManager = app.configManager,
                                 authManager = app.xboxAuthManager,
                                 moduleManager = app.moduleManager,
                                 commandManager = app.commandManager,
@@ -187,8 +190,9 @@ class BedrockProxyService : Service() {
 
             while (isActive) {
                 try {
+                    val targetName = if (config.targetIp.isNotBlank()) config.targetIp else "AG Proxy"
                     // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
-                    val motd = "MCPE;§bAG Client Beta §7[The Hive];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$port;$port;"
+                    val motd = "MCPE;§bAG Client v2.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$port;$port;"
                     val motdBytes = motd.toByteArray(Charsets.UTF_8)
 
                     val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {
@@ -272,6 +276,20 @@ class BedrockProxyService : Service() {
 
         try {
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = wifiManager.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "AGClient::ProxyWifiLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Logger.i("ProxyService", "Acquired WifiLock (FULL_HIGH_PERF) for proxy stability.")
+        } catch (t: Throwable) {
+            Logger.w("ProxyService", "Error acquiring WifiLock: ${t.message}")
+        }
+
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             multicastLock = wifiManager.createMulticastLock("AGClient::LANMulticast").apply {
                 setReferenceCounted(true)
                 acquire()
@@ -290,6 +308,12 @@ class BedrockProxyService : Service() {
         } catch (_: Exception) {}
 
         try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
+            }
+        } catch (_: Exception) {}
+
+        try {
             if (multicastLock?.isHeld == true) {
                 multicastLock?.release()
             }
@@ -300,9 +324,10 @@ class BedrockProxyService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "AG Client Proxy Service",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Maintains local MITM proxy server and background packet processing"
+            setShowBadge(true)
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager?.createNotificationChannel(channel)
@@ -327,11 +352,14 @@ class BedrockProxyService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AG Client (MITM Proxy)")
+            .setContentTitle("AG Client v2.0 (Active Proxy)")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Proxy", stopPendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .build()
     }

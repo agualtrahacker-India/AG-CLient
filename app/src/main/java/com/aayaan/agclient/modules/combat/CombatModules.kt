@@ -411,3 +411,305 @@ class MaceSwapModule : Module(
     category = ModuleCategory.COMBAT,
     description = "Automatically swaps to Mace before attack on downward fall"
 )
+
+// 14. KnockbackDelay
+class KnockbackDelayModule : Module(
+    name = "KnockbackDelay",
+    commandName = "knockbackdelay",
+    category = ModuleCategory.COMBAT,
+    description = "Alters incoming knockback packet timing to manipulate hit trade sequences"
+) {
+    val delayMsProp = ModuleProperty.IntProperty("Delay", "Knockback delay in ms", 150, 20, 600)
+
+    init {
+        addProperty(delayMsProp)
+    }
+}
+
+// 15. AfkClicker
+class AfkClickerModule : Module(
+    name = "AfkClicker",
+    commandName = "afkclicker",
+    category = ModuleCategory.COMBAT,
+    description = "Maintains continuous automated attack or item-use actions while idle"
+) {
+    val cpsProp = ModuleProperty.IntProperty("CPS", "Clicks per second", 8, 1, 20)
+
+    init {
+        addProperty(cpsProp)
+    }
+
+    private var lastClick = 0L
+
+    override fun onTick(session: ProxySession) {
+        if (!isEnabled || !session.isConnectedToUpstream) return
+        val interval = 1000L / cpsProp.value.coerceIn(1, 20)
+        val now = System.currentTimeMillis()
+        if (now - lastClick >= interval) {
+            val player = session.worldState.playerState
+            val swing = AnimatePacket().apply {
+                action = AnimatePacket.Action.SWING_ARM
+                runtimeEntityId = player.runtimeEntityId
+            }
+            session.sendToServer(swing)
+            lastClick = now
+        }
+    }
+}
+
+// 16. DoubleClick
+class DoubleClickModule : Module(
+    name = "DoubleClick",
+    commandName = "doubleclick",
+    category = ModuleCategory.COMBAT,
+    description = "Injects extra attack packets per physical swing"
+) {
+    override fun onClientPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
+        if (!isEnabled) return PacketSignal.UNHANDLED
+        if (packet is InventoryTransactionPacket && packet.transactionType == InventoryTransactionType.ITEM_USE_ON_ENTITY) {
+            val duplicate = InventoryTransactionPacket().apply {
+                transactionType = packet.transactionType
+                actionType = packet.actionType
+                runtimeEntityId = packet.runtimeEntityId
+                playerPosition = packet.playerPosition
+                clickPosition = packet.clickPosition
+            }
+            session.sendToServer(duplicate)
+        }
+        return PacketSignal.UNHANDLED
+    }
+}
+
+// 17. AutoPotion
+class AutoPotionModule : Module(
+    name = "AutoPotion",
+    commandName = "autopotion",
+    category = ModuleCategory.COMBAT,
+    description = "Detects health threshold drops and throws splash potions downwards"
+) {
+    val healthThresholdProp = ModuleProperty.FloatProperty("HealthThreshold", "Health threshold to throw pot", 10.0f, 2.0f, 18.0f)
+
+    init {
+        addProperty(healthThresholdProp)
+    }
+
+    override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
+        if (!isEnabled) return PacketSignal.UNHANDLED
+        if (packet is UpdateAttributesPacket && packet.runtimeEntityId == session.worldState.playerState.runtimeEntityId) {
+            for (attr in packet.attributes) {
+                if (attr.name == "minecraft:health" && attr.value <= healthThresholdProp.value) {
+                    // Trigger potion throw downwards
+                    val player = session.worldState.playerState
+                    val throwAuth = PlayerAuthInputPacket().apply {
+                        position = player.position
+                        rotation = Vector3f.from(90.0f, player.yaw, player.headYaw) // Aim straight down
+                        motion = org.cloudburstmc.math.vector.Vector2f.ZERO
+                    }
+                    session.sendToServer(throwAuth)
+                }
+            }
+        }
+        return PacketSignal.UNHANDLED
+    }
+}
+
+// 18. AntiCrystal
+class AntiCrystalModule : Module(
+    name = "AntiCrystal",
+    commandName = "anticrystal",
+    category = ModuleCategory.COMBAT,
+    description = "Places blast-resistant shielding blocks to block crystal explosion vectors"
+)
+
+// 19. AutoCart
+class AutoCartModule : Module(
+    name = "AutoCart",
+    commandName = "autocart",
+    category = ModuleCategory.COMBAT,
+    description = "Automates placement and rapid ignition of TNT minecarts near targets"
+)
+
+// 20. AutoWeb
+class AutoWebModule : Module(
+    name = "AutoWeb",
+    commandName = "autoweb",
+    category = ModuleCategory.COMBAT,
+    description = "Drops cobwebs at opponent coordinates to restrict movement"
+)
+
+// 21. AutoJumpReset
+class AutoJumpResetModule : Module(
+    name = "AutoJumpReset",
+    commandName = "autojumpreset",
+    category = ModuleCategory.COMBAT,
+    description = "Executes calculated jumps upon taking damage to counter momentum"
+) {
+    override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
+        if (!isEnabled) return PacketSignal.UNHANDLED
+        if (packet is EntityEventPacket && packet.runtimeEntityId == session.worldState.playerState.runtimeEntityId && packet.type == EntityEventType.HURT) {
+            val player = session.worldState.playerState
+            val jumpMotion = SetEntityMotionPacket().apply {
+                runtimeEntityId = player.runtimeEntityId
+                motion = Vector3f.from(0f, 0.42f, 0f)
+            }
+            session.sendToClient(jumpMotion)
+        }
+        return PacketSignal.UNHANDLED
+    }
+}
+
+// 22. AutoCrit
+class AutoCritModule : Module(
+    name = "AutoCrit",
+    commandName = "autocrit",
+    category = ModuleCategory.COMBAT,
+    description = "Synchronizes attack timing strictly with downward falling motion for critical hits"
+)
+
+// 23. AutoSwitch
+class AutoSwitchModule : Module(
+    name = "AutoSwitch",
+    commandName = "autoswitch",
+    category = ModuleCategory.COMBAT,
+    description = "Automatically alternates between designated hotbar slots during combat"
+)
+
+// 24. MaceDmg
+class MaceDmgModule : Module(
+    name = "MaceDmg",
+    commandName = "macedmg",
+    category = ModuleCategory.COMBAT,
+    description = "Applies automated fall-momentum amplification to mace swing packets"
+)
+
+// 25. AimAssist
+class AimAssistModule : Module(
+    name = "AimAssist",
+    commandName = "aimassist",
+    category = ModuleCategory.COMBAT,
+    description = "Smoothly shifts crosshair yaw and pitch toward the nearest enemy"
+) {
+    val smoothSpeedProp = ModuleProperty.FloatProperty("SmoothSpeed", "Rotation smoothing speed", 2.5f, 1.0f, 10.0f)
+
+    init {
+        addProperty(smoothSpeedProp)
+    }
+
+    override fun onTick(session: ProxySession) {
+        if (!isEnabled || !session.isConnectedToUpstream) return
+        val player = session.worldState.playerState
+        val targets = session.worldState.entityTracker.getPlayersInRange(player.position, 5.0f, player.runtimeEntityId)
+        val target = targets.minByOrNull { MathUtils.distance(player.position, it.position) } ?: return
+
+        val dx = target.position.x - player.position.x
+        val dy = (target.position.y + 1.2f) - player.eyePosition.y
+        val dz = target.position.z - player.position.z
+        val dist = kotlin.math.sqrt(dx * dx + dz * dz)
+
+        val targetYaw = -Math.toDegrees(kotlin.math.atan2(dx.toDouble(), dz.toDouble())).toFloat()
+        val targetPitch = -Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dist.toDouble())).toFloat()
+
+        val newYaw = player.yaw + (targetYaw - player.yaw) * (0.05f * smoothSpeedProp.value)
+        val newPitch = player.pitch + (targetPitch - player.pitch) * (0.05f * smoothSpeedProp.value)
+
+        val move = MovePlayerPacket().apply {
+            runtimeEntityId = player.runtimeEntityId
+            position = player.position
+            rotation = Vector3f.from(newPitch, newYaw, newYaw)
+            mode = MovePlayerPacket.Mode.NORMAL
+            isOnGround = player.isOnGround
+        }
+        session.sendToClient(move)
+    }
+}
+
+// 26. AutoLog
+class AutoLogModule : Module(
+    name = "AutoLog",
+    commandName = "autolog",
+    category = ModuleCategory.COMBAT,
+    description = "Automatically severs server connection when health reaches a defined threshold"
+) {
+    val disconnectHealthProp = ModuleProperty.FloatProperty("Threshold", "Disconnect HP threshold", 4.0f, 1.0f, 10.0f)
+
+    init {
+        addProperty(disconnectHealthProp)
+    }
+
+    override fun onServerPacket(packet: BedrockPacket, session: ProxySession): PacketSignal {
+        if (!isEnabled) return PacketSignal.UNHANDLED
+        if (packet is UpdateAttributesPacket && packet.runtimeEntityId == session.worldState.playerState.runtimeEntityId) {
+            for (attr in packet.attributes) {
+                if (attr.name == "minecraft:health" && attr.value <= disconnectHealthProp.value) {
+                    session.clientSession?.disconnect()
+                    val disconnectPacket = DisconnectPacket().apply {
+                        kickMessage = "§c[AutoLog] Disconnected: Health dropped below ${disconnectHealthProp.value} HP"
+                    }
+                    session.sendToClient(disconnectPacket)
+                    return PacketSignal.HANDLED
+                }
+            }
+        }
+        return PacketSignal.UNHANDLED
+    }
+}
+
+// 27. MultiAura
+class MultiAuraModule : Module(
+    name = "MultiAura",
+    commandName = "multiaura",
+    category = ModuleCategory.COMBAT,
+    description = "Distributes attack packets across multiple targets simultaneously"
+) {
+    val maxTargetsProp = ModuleProperty.IntProperty("MaxTargets", "Maximum simultaneous targets", 3, 2, 6)
+
+    init {
+        addProperty(maxTargetsProp)
+    }
+
+    override fun onTick(session: ProxySession) {
+        if (!isEnabled || !session.isConnectedToUpstream) return
+        val player = session.worldState.playerState
+        val targets = session.worldState.entityTracker.getPlayersInRange(player.position, 4.5f, player.runtimeEntityId)
+            .take(maxTargetsProp.value)
+
+        for (target in targets) {
+            val swing = AnimatePacket().apply {
+                action = AnimatePacket.Action.SWING_ARM
+                runtimeEntityId = player.runtimeEntityId
+            }
+            session.sendToServer(swing)
+
+            val attack = InventoryTransactionPacket().apply {
+                transactionType = InventoryTransactionType.ITEM_USE_ON_ENTITY
+                actionType = 1
+                runtimeEntityId = target.runtimeId
+                playerPosition = player.position
+                clickPosition = Vector3f.ZERO
+            }
+            session.sendToServer(attack)
+        }
+    }
+}
+
+// 28. InfiniteAura
+class InfiniteAuraModule : Module(
+    name = "InfiniteAura",
+    commandName = "infiniteaura",
+    category = ModuleCategory.COMBAT,
+    description = "Dispatches pathfinding packets to attack targets across extreme distances"
+) {
+    val rangeProp = ModuleProperty.FloatProperty("Range", "Infinite range", 20.0f, 10.0f, 50.0f)
+
+    init {
+        addProperty(rangeProp)
+    }
+}
+
+// 29. ProjectileAimbot
+class ProjectileAimbotModule : Module(
+    name = "ProjectileAimbot",
+    commandName = "projectileaimbot",
+    category = ModuleCategory.COMBAT,
+    description = "Calculates trajectory, gravity, and velocity leading for ranged weapons"
+)

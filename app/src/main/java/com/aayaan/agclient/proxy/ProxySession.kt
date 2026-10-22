@@ -2,6 +2,7 @@ package com.aayaan.agclient.proxy
 
 import com.aayaan.agclient.auth.XboxAuthManager
 import com.aayaan.agclient.commands.CommandManager
+import com.aayaan.agclient.config.ConfigManager
 import com.aayaan.agclient.config.ProxyConfig
 import com.aayaan.agclient.gui.InGameGuiManager
 import com.aayaan.agclient.modules.ModuleManager
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit
 class ProxySession(
     val serverSession: BedrockServerSession, // Local connection to Minecraft Bedrock App
     val config: ProxyConfig,
+    val configManager: ConfigManager,
     val authManager: XboxAuthManager,
     val moduleManager: ModuleManager,
     val commandManager: CommandManager,
@@ -140,8 +142,15 @@ class ProxySession(
         cachedLoginPacket = packet
 
         // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
-        val targetHost = DynamicTargetTracker.activeTargetHost ?: config.targetIp
+        val targetHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
         val targetPort = DynamicTargetTracker.activeTargetPort
+
+        if (targetHost.isBlank()) {
+            Logger.w("ProxySession", "Connection aborted: Target server address is empty.")
+            sendChatToClient("§c[AG Client] No target server specified! Please open the AG Client app and select or type a server address.")
+            return
+        }
+
         val targetAddress = InetSocketAddress(targetHost, targetPort)
         Logger.i("ProxySession", "Connecting upstream to target: $targetHost:$targetPort")
 
@@ -175,6 +184,9 @@ class ProxySession(
             clientSession = session
             isConnectedToUpstream = true
             Logger.i("ProxySession", "Connected to remote server: $targetHost:$targetPort")
+
+            // Automatically record successfully connected server to history
+            configManager.addServerToHistory(targetHost, targetPort)
 
             // Sync codec with local client session
             try {
@@ -213,6 +225,13 @@ class ProxySession(
                         session.sendPacket(login)
                         Logger.i("ProxySession", "Forwarded player's LoginPacket to upstream server.")
                     }
+                    return PacketSignal.HANDLED
+                }
+
+                if (packet is ServerToClientHandshakePacket) {
+                    Logger.i("ProxySession", "Upstream server requested handshake. Responding with ClientToServerHandshakePacket.")
+                    val clientHandshake = ClientToServerHandshakePacket()
+                    session.sendPacket(clientHandshake)
                     return PacketSignal.HANDLED
                 }
 

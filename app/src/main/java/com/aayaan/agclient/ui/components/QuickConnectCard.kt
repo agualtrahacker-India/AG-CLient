@@ -25,9 +25,9 @@ import java.util.Collections
 
 @Composable
 fun QuickConnectCard(
-    targetServer: String = "geo.hivebedrock.network",
+    targetServer: String = "",
     targetPort: Int = 19132,
-    localPort: Int = 19132,
+    localPort: Int = 19133,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -36,9 +36,13 @@ fun QuickConnectCard(
     var isCheckingTarget by remember { mutableStateOf(false) }
 
     LaunchedEffect(targetServer, targetPort) {
-        isCheckingTarget = true
-        targetStatus = com.aayaan.agclient.utils.ServerPinger.pingServer(targetServer, targetPort)
-        isCheckingTarget = false
+        if (targetServer.isNotBlank()) {
+            isCheckingTarget = true
+            targetStatus = com.aayaan.agclient.utils.ServerPinger.pingServer(targetServer, targetPort)
+            isCheckingTarget = false
+        } else {
+            targetStatus = null
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -103,13 +107,13 @@ fun QuickConnectCard(
                     Icon(
                         imageVector = Icons.Default.CloudSync,
                         contentDescription = null,
-                        tint = AccentGreen,
+                        tint = if (targetServer.isNotBlank()) AccentGreen else AccentAmber,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Forwarding to: $targetServer:$targetPort",
+                        text = if (targetServer.isNotBlank()) "Forwarding to: $targetServer:$targetPort" else "No target server selected (Set in config below)",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary
+                        color = if (targetServer.isNotBlank()) TextPrimary else AccentAmber
                     )
                 }
             }

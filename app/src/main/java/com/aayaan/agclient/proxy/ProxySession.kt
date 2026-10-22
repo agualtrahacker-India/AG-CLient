@@ -62,20 +62,25 @@ class ProxySession(
                 }
                 return PacketSignal.HANDLED
             }
-
-            override fun onDisconnect(reason: String) {
-                Logger.i("ProxySession", "Local Minecraft client disconnected: $reason")
-                try {
-                    clientSession?.disconnect("Client disconnected")
-                } catch (_: Exception) {}
-                cleanup()
-            }
         })
     }
 
     private fun startTickLoop() {
         tickExecutor.scheduleAtFixedRate({
             try {
+                if (!serverSession.isConnected) {
+                    cleanup()
+                    return@scheduleAtFixedRate
+                }
+                clientSession?.let { upstream ->
+                    if (isConnectedToUpstream && !upstream.isConnected) {
+                        try {
+                            serverSession.disconnect("§c[AG Client] Connection lost to upstream server.")
+                        } catch (_: Exception) {}
+                        cleanup()
+                        return@scheduleAtFixedRate
+                    }
+                }
                 moduleManager.onTick(this)
             } catch (e: Exception) {
                 Logger.e("ProxySession", "Error in proxy session tick", e)
@@ -260,35 +265,20 @@ class ProxySession(
                     return PacketSignal.HANDLED
                 }
 
+                if (packet is DisconnectPacket) {
+                    Logger.w("ProxySession", "Upstream server disconnected session: ${packet.kickMessage}")
+                    serverSession.sendPacket(packet)
+                    cleanup()
+                    return PacketSignal.HANDLED
+                }
+
                 val signal = handleServerPacket(packet)
                 if (signal == PacketSignal.UNHANDLED) {
                     serverSession.sendPacket(packet)
                 }
                 return PacketSignal.HANDLED
             }
-
-            override fun onDisconnect(reason: String) {
-                Logger.w("ProxySession", "Upstream server disconnected session: $reason")
-                try {
-                    serverSession.disconnect("§c[AG Client] Disconnected from Server\n§7Reason: §f$reason")
-                } catch (_: Exception) {
-                    serverSession.disconnect()
-                }
-                cleanup()
-            }
         })
-
-        try {
-            session.peerChannel?.closeFuture()?.addListener {
-                if (serverSession.isConnected) {
-                    Logger.i("ProxySession", "Upstream channel closed. Terminating local session.")
-                    try {
-                        serverSession.disconnect("§c[AG Client] Server connection closed.")
-                    } catch (_: Exception) {}
-                }
-                cleanup()
-            }
-        } catch (_: Exception) {}
     }
 
     private var hasSentWelcomeMessage = false

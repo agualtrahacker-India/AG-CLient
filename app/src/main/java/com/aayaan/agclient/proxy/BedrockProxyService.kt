@@ -190,9 +190,11 @@ class BedrockProxyService : Service() {
 
             while (isActive) {
                 try {
-                    val targetName = if (config.targetIp.isNotBlank()) config.targetIp else "AG Proxy"
+                    val currentConfig = (application as AGClientApplication).configManager.currentConfig
+                    val targetName = if (currentConfig.targetIp.isNotBlank()) currentConfig.targetIp else "AG Proxy"
+                    val broadcastPort = currentConfig.localBindPort
                     // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
-                    val motd = "MCPE;§bAG Client v2.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$port;$port;"
+                    val motd = "MCPE;§bAG Client v2.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
                     val motdBytes = motd.toByteArray(Charsets.UTF_8)
 
                     val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {

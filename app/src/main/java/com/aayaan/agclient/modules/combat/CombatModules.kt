@@ -642,10 +642,11 @@ class AutoLogModule : Module(
             for (attr in packet.attributes) {
                 if (attr.name == "minecraft:health" && attr.value <= disconnectHealthProp.value) {
                     session.clientSession?.disconnect()
-                    val disconnectPacket = DisconnectPacket().apply {
-                        kickMessage = "§c[AutoLog] Disconnected: Health dropped below ${disconnectHealthProp.value} HP"
+                    try {
+                        session.serverSession.disconnect("§c[AutoLog] Disconnected: Health dropped below ${disconnectHealthProp.value} HP")
+                    } catch (_: Exception) {
+                        session.serverSession.disconnect()
                     }
-                    session.sendToClient(disconnectPacket)
                     return PacketSignal.HANDLED
                 }
             }

@@ -59,27 +59,25 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.2.0-release
+          name: AG-Client-v2.3.0-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.2.0
-          name: "AG Client v2.2.0 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.3.0
+          name: "AG Client v2.3.0 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.2.0)
+            ### AG Client (v2.3.0)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.2.0:
-            - **Adopted Lunar Proxy Domain Trick (`play.localtest.me`):** Replaced raw numeric loopback IP with a verified website domain (`play.localtest.me`), completely bypassing Minecraft Bedrock Android's raw loopback connection block.
-            - **Removed Method 2 (Friends / LAN Tab):** Streamlined setup to 1 single, reliable connection method (Add Server). Removed background broadcast socket contention.
-            - **1-Tap Featured Server Quick-Selector:** Added instant preset chips for The Hive, NetherGames, CubeCraft, Lifeboat, and Zeqa right on the dashboard.
-            - **Fixed Module Crosstalk & Auto-Off Bug:** All module toggles now persist immediately to disk and use keyed LazyColumn Compose states, preventing toggle collisions and resets.
-            - **Eliminated Connection Timed Out:** Forwarded upstream handshake packets properly and added immediate descriptive disconnection if target host is invalid.
-            - **Legacy Duplicate App Cleanup:** Auto-detects legacy installations (`com.aayaan.agclient.debug`) and provides a 1-tap uninstaller.
-            - **Full Semantic Version Auto-Updater:** Seamless in-app updating across all version tiers signed with the permanent release keystore.
+            #### What's New in v2.3.0:
+            - **No Default or Hardcoded Servers:** Completely removed all preset/featured server chips and hardcoded IPs. The user has full control to enter any destination server. Only servers the user actually joins are saved in history.
+            - **Eliminated Connection Timed Out Root Cause:** Added explicit Netty connection timeout handling, direct disconnection errors on remote failure (no more 30-second silent hangs), and live Wi-Fi IP auto-detection with 1-tap refresh.
+            - **Clean One-Method Connection:** Fast, direct "Add Server" in Minecraft using the phone's live IP and default port 19133.
+            - **Keyed Compose Modules & Instant Persistence:** Prevents toggle crosstalk (e.g. Fly vs KillAura) and state resets when changing tabs.
+            - **Duplicate App Cleanup:** Auto-detects legacy installations (`com.aayaan.agclient.debug`) and provides a 1-tap uninstaller.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

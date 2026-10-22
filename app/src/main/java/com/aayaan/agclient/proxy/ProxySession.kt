@@ -148,7 +148,7 @@ class ProxySession(
         if (targetHost.isBlank()) {
             Logger.w("ProxySession", "Connection aborted: Target server address is empty.")
             try {
-                serverSession.disconnect("§c[AG Client] No Target Server!\n§eOpen AG Client & select a server from history.")
+                serverSession.disconnect("§c[AG Client] Target Server is Empty!\n§ePlease enter your destination server IP & port in the AG Client app.")
             } catch (_: Exception) {
                 serverSession.disconnect()
             }
@@ -166,6 +166,7 @@ class ProxySession(
         val bootstrap = Bootstrap()
             .channelFactory(RakChannelFactory.client(NioDatagramChannel::class.java))
             .group(group)
+            .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, 7000)
             .handler(object : BedrockClientInitializer() {
                 override fun initSession(session: BedrockClientSession) {
                     future.complete(session)
@@ -181,7 +182,12 @@ class ProxySession(
         future.whenComplete { session, connErr ->
             if (connErr != null) {
                 Logger.e("ProxySession", "Failed to connect to $targetHost:$targetPort", connErr)
-                sendChatToClient("§c[Proxy] Connection refused by remote server ($targetHost): ${connErr.message}")
+                try {
+                    val msg = connErr.message ?: "Connection timed out"
+                    serverSession.disconnect("§c[AG Client] Remote Server Unreachable!\n§7Server: §e$targetHost:$targetPort\n§cReason: §f$msg\n§ePlease verify target IP & port in AG Client.")
+                } catch (_: Exception) {
+                    serverSession.disconnect()
+                }
                 return@whenComplete
             }
 

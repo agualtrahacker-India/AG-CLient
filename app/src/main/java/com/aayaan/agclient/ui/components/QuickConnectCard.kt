@@ -5,10 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,33 +18,47 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aayaan.agclient.ui.theme.*
-
-data class FeaturedServerPreset(
-    val name: String,
-    val host: String,
-    val port: Int = 19132,
-    val icon: String
-)
-
-val POPULAR_FEATURED_SERVERS = listOf(
-    FeaturedServerPreset("The Hive", "geo.hivebedrock.network", 19132, "🐝"),
-    FeaturedServerPreset("NetherGames", "play.nethergames.org", 19132, "⚔️"),
-    FeaturedServerPreset("CubeCraft", "play.cubecraft.net", 19132, "🧊"),
-    FeaturedServerPreset("Lifeboat", "play.lbsg.net", 19132, "⛵"),
-    FeaturedServerPreset("Zeqa", "zeqa.net", 19132, "🎯")
-)
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.util.Collections
 
 @Composable
 fun QuickConnectCard(
     targetServer: String = "",
     targetPort: Int = 19132,
     localPort: Int = 19133,
-    onSelectTarget: ((String, Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val lunarDomain = "play.localtest.me"
-    val alternativeDomain = "127.0.0.1.nip.io"
+    var wifiIp by remember { mutableStateOf<String?>(null) }
+
+    fun refreshNetworkIp() {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            var foundIp: String? = null
+            for (intf in interfaces) {
+                if (intf.isLoopback || !intf.isUp) continue
+                val addrs = Collections.list(intf.inetAddresses)
+                for (addr in addrs) {
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress
+                        if (!host.isNullOrEmpty() && !host.startsWith("10.8.")) {
+                            foundIp = host
+                            break
+                        }
+                    }
+                }
+                if (foundIp != null) break
+            }
+            wifiIp = foundIp
+        } catch (_: Exception) {}
+    }
+
+    LaunchedEffect(Unit) {
+        refreshNetworkIp()
+    }
+
+    val displayIp = wifiIp ?: "127.0.0.1"
 
     Card(
         modifier = modifier
@@ -62,90 +73,65 @@ fun QuickConnectCard(
         ) {
             // Header
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.SportsEsports,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = "Connect Minecraft to AG Client",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = NeonCyan
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SportsEsports,
+                        contentDescription = null,
+                        tint = NeonCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Connect Minecraft to AG Client",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCyan
+                    )
+                }
+
+                IconButton(onClick = { refreshNetworkIp() }) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh IP",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
-            // Upstream Target Info & Quick Server Chips
+            // Upstream Target Info
             Surface(
                 color = DarkCard,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudSync,
-                            contentDescription = null,
-                            tint = if (targetServer.isNotBlank()) AccentGreen else AccentAmber,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (targetServer.isNotBlank()) "Target Server: $targetServer:$targetPort" else "⚠️ No target server chosen! Tap one to play:",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (targetServer.isNotBlank()) TextPrimary else AccentAmber
-                        )
-                    }
-
-                    // Quick-Pick Preset Server Chips (Like Lunar Proxy)
-                    if (onSelectTarget != null) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            for (preset in POPULAR_FEATURED_SERVERS) {
-                                val isSelected = preset.host.equals(targetServer.trim(), ignoreCase = true)
-                                Surface(
-                                    color = if (isSelected) NeonCyan.copy(alpha = 0.2f) else DarkBackground,
-                                    border = BorderStroke(1.dp, if (isSelected) NeonCyan else DarkCardBorder),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable {
-                                            onSelectTarget(preset.host, preset.port)
-                                            Toast.makeText(context, "Selected: ${preset.name}", Toast.LENGTH_SHORT).show()
-                                        }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 6.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(text = preset.icon, style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            text = preset.name,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (isSelected) NeonCyan else TextSecondary,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = if (targetServer.isNotBlank()) AccentGreen else AccentAmber,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = if (targetServer.isNotBlank()) "Target Server: $targetServer:$targetPort" else "⚠️ Target Server is empty! Enter one in Target Server & Network Config below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (targetServer.isNotBlank()) TextPrimary else AccentAmber
+                    )
                 }
             }
 
-            // Lunar Proxy Trick Address Box (Website Domain Instead of Raw IP)
+            // Connection Details Box
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkBackground),
                 shape = RoundedCornerShape(10.dp),
@@ -163,38 +149,21 @@ fun QuickConnectCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = "Server Address (Website Name)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextSecondary
-                                )
-                                Surface(
-                                    color = ElectricPurple.copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = "⚡ Lunar Proxy Trick",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = ElectricPurple,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
                             Text(
-                                text = lunarDomain,
+                                text = if (wifiIp != null) "Server Address (Your Device IP)" else "Server Address (Local)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = displayIp,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
                             )
                             Text(
-                                text = "Bypasses Android's loopback bug by resolving via DNS",
+                                text = if (wifiIp != null) "Connected on Wi-Fi" else "Loopback (127.0.0.1)",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                color = if (wifiIp != null) AccentGreen else TextSecondary
                             )
                         }
 
@@ -213,28 +182,29 @@ fun QuickConnectCard(
                         }
                     }
 
-                    HorizontalDivider(color = DarkCardBorder)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Alternative Domain fallback:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
-                        Text(
-                            text = alternativeDomain,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
+                    if (wifiIp != null) {
+                        HorizontalDivider(color = DarkCardBorder)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Loopback fallback:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "127.0.0.1",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 }
             }
 
-            // Quick Action Buttons (Copy Domain & Copy Port)
+            // Quick Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -242,9 +212,9 @@ fun QuickConnectCard(
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Server Address", lunarDomain)
+                        val clip = ClipData.newPlainText("Server Address", displayIp)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied Address: $lunarDomain", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Copied Address: $displayIp", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
@@ -258,7 +228,7 @@ fun QuickConnectCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Copy Address", color = NeonCyan)
+                    Text(text = "Copy IP", color = NeonCyan)
                 }
 
                 Button(
@@ -303,7 +273,7 @@ fun QuickConnectCard(
                 Text(text = "Launch Minecraft", color = DarkBackground, fontWeight = FontWeight.Bold)
             }
 
-            // Connection Guide (Add Server - The Lunar Proxy Method)
+            // Connection Guide (Add Server in Minecraft)
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
                 modifier = Modifier.fillMaxWidth()
@@ -319,23 +289,19 @@ fun QuickConnectCard(
                         color = TextPrimary
                     )
                     Text(
-                        text = "1. Start proxy above (make sure a target server like The Hive or NetherGames is selected).\n" +
-                                "2. Tap 'Copy Address' and 'Launch Minecraft'.\n" +
-                                "3. In Minecraft: Tap Play.\n" +
-                                "4. In New 1.21+ UI: Tap Servers icon (stacked cubes 🖥️ on left sidebar) ➡️ Scroll to bottom & tap 'Add Server'.\n" +
+                        text = "1. Enter your destination server IP & port in the config card below.\n" +
+                                "2. Start proxy above.\n" +
+                                "3. Tap 'Copy IP' and 'Launch Minecraft'.\n" +
+                                "4. In Minecraft: Tap Play.\n" +
+                                "5. In New 1.21+ UI: Tap Servers icon (stacked cubes 🖥️ on left sidebar) ➡️ Scroll to bottom & tap 'Add Server'.\n" +
                                 "   (In Classic UI: Tap 'Servers' tab at the top ➡️ Add Server).\n" +
-                                "5. Enter details:\n" +
+                                "6. Enter details:\n" +
                                 "   • Server Name: AG Client\n" +
-                                "   • Server Address: $lunarDomain\n" +
+                                "   • Server Address: $displayIp\n" +
                                 "   • Port: $localPort\n" +
-                                "6. Tap Save & Join! (Saved in your server list forever).",
+                                "7. Tap Save & Join! (Saved in your server list forever).",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
-                    )
-                    Text(
-                        text = "💡 Why this works: Just like Lunar Proxy, using a website address ($lunarDomain) bypasses the Android bug that blocks raw 127.0.0.1 IP connections.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = AccentGreen
                     )
                 }
             }

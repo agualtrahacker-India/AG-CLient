@@ -103,7 +103,7 @@ class CommandManager(
             override val aliases = listOf("cmds", "commands")
 
             override fun execute(args: List<String>, session: ProxySession) {
-                session.sendChatToClient("§b--- AG Client v2.2 Commands (70) ---")
+                session.sendChatToClient("§b--- AG Client v2.3 Commands (70) ---")
                 session.sendChatToClient("§eCore:§7 .help, .menu, .bind, .config, .disableall, .ghost, .relog, .panic, .coords")
                 session.sendChatToClient("§eCombat:§7 /reach, /killaura, /tpaura, /hitbox, /knockback, /knockbackdelay, /backtrack, /triggerbot, /autoclicker, /afkclicker, /doubleclick, /autototem, /autopotion, /autocrystal, /anticrystal, /autocart, /autoweb, /autojumpreset, /autocrit, /autoswitch, /maceswap, /macedmg, /shielddisabler, /aimassist, /autolog, /anchoraura, /multiaura, /infiniteaura, /projectileaimbot")
                 session.sendChatToClient("§eMovement:§7 /fly, /boatfly, /speed, /noslow, /airjump, /phase, /jetpack, /jumpboost, /levitate, /slowfalling, /taptp, /motionfly, /autorocket, /autoelytra, /bunnyhop, /step, /waterwalk, /glide")

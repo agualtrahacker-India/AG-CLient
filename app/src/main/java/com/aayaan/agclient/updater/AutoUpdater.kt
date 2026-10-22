@@ -47,9 +47,9 @@ class AutoUpdater(private val context: Context) {
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     val currentVersion: String = try {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.6.1"
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.6.2"
     } catch (_: Exception) {
-        "2.6.1"
+        "2.6.2"
     }
 
     companion object {

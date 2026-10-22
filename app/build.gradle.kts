@@ -11,8 +11,8 @@ android {
         applicationId = "com.aayaan.agclient"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.6.1"
+        versionCode = 10
+        versionName = "2.6.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

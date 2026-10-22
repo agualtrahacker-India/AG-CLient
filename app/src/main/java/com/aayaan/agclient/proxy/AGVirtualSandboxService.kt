@@ -79,6 +79,21 @@ class AGVirtualSandboxService : VpnService() {
         isRunning = true
         _isSandboxRunning.value = true
 
+        // Automatically ensure BedrockProxyService is running so local relay target is available
+        if (BedrockProxyService.serviceState.value != ServiceState.RUNNING) {
+            Logger.i("VirtualSandbox", "Starting BedrockProxyService to listen for sandbox relay traffic...")
+            val proxyIntent = Intent(this, BedrockProxyService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(proxyIntent)
+                } else {
+                    startService(proxyIntent)
+                }
+            } catch (e: Exception) {
+                Logger.e("VirtualSandbox", "Failed to start BedrockProxyService", e)
+            }
+        }
+
         val localPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
         val notification = buildNotification("Virtual Sandbox Active (10.0.0.1:$localPort)")
         try {
@@ -104,6 +119,7 @@ class AGVirtualSandboxService : VpnService() {
                     .addAddress("10.0.0.2", 24)
                     .addRoute("10.0.0.0", 24)
                     .setMtu(1400)
+                    .allowBypass()
 
                 val mcPackages = listOf(
                     "com.mojang.minecraftpe",
@@ -202,6 +218,17 @@ class AGVirtualSandboxService : VpnService() {
         serverIp: ByteArray,
         outputStream: FileOutputStream
     ): ClientRoute {
+        val existing = clientRoutes[clientPort]
+        if (existing != null && !existing.socket.isClosed && existing.job.isActive) {
+            return existing
+        }
+
+        if (existing != null) {
+            try { existing.job.cancel() } catch (_: Exception) {}
+            try { existing.socket.close() } catch (_: Exception) {}
+            clientRoutes.remove(clientPort)
+        }
+
         return clientRoutes.computeIfAbsent(clientPort) {
             val relaySocket = DatagramSocket().apply {
                 protect(this)

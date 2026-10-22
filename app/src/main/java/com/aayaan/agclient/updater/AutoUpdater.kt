@@ -1,10 +1,16 @@
 package com.aayaan.agclient.updater
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
+import com.aayaan.agclient.MainActivity
+import com.aayaan.agclient.R
 import com.aayaan.agclient.utils.Logger
 import com.google.gson.JsonParser
 import kotlinx.coroutines.*
@@ -34,6 +40,8 @@ sealed class UpdateState {
 class AutoUpdater(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val prefs = context.getSharedPreferences("ag_client_updater", Context.MODE_PRIVATE)
+    private var periodicJob: Job? = null
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
@@ -48,11 +56,48 @@ class AutoUpdater(private val context: Context) {
         const val REPO_OWNER = "agualtrahacker-India"
         const val REPO_NAME = "AG-CLient"
         const val API_LATEST_RELEASE = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+        const val NOTIFICATION_CHANNEL_ID = "ag_client_updates_channel"
+        const val NOTIFICATION_ID_UPDATE = 4001
+        const val PREF_LAST_CHECK = "last_check_timestamp"
+        const val CHECK_INTERVAL_MS = 30 * 60 * 1000L // 30 minutes
     }
 
-    fun checkForUpdates(silent: Boolean = false) {
+    init {
+        startPeriodicUpdateChecks()
+    }
+
+    fun startPeriodicUpdateChecks() {
+        if (periodicJob?.isActive == true) return
+        periodicJob = scope.launch {
+            while (isActive) {
+                val lastCheck = prefs.getLong(PREF_LAST_CHECK, 0L)
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastCheck
+
+                if (elapsed >= CHECK_INTERVAL_MS || lastCheck == 0L) {
+                    checkForUpdates(silent = true, force = true)
+                }
+
+                val waitTime = (CHECK_INTERVAL_MS - (System.currentTimeMillis() - prefs.getLong(PREF_LAST_CHECK, now)))
+                    .coerceAtLeast(60_000L)
+                delay(waitTime)
+            }
+        }
+    }
+
+    fun checkForUpdates(silent: Boolean = false, force: Boolean = false) {
         scope.launch {
             try {
+                val lastCheck = prefs.getLong(PREF_LAST_CHECK, 0L)
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastCheck
+
+                if (!force && lastCheck != 0L && elapsed < CHECK_INTERVAL_MS) {
+                    Logger.d("AutoUpdater", "Skipping update check - last check was ${elapsed / 1000}s ago (cooldown 30m).")
+                    return@launch
+                }
+                prefs.edit().putLong(PREF_LAST_CHECK, now).apply()
+
                 if (!silent) _updateState.value = UpdateState.Checking
                 Logger.i("AutoUpdater", "Checking GitHub for updates at $API_LATEST_RELEASE...")
 
@@ -97,6 +142,7 @@ class AutoUpdater(private val context: Context) {
                             apkSize = apkSize
                         )
                         Logger.i("AutoUpdater", "New update available: $cleanTag (current: $currentVersion)")
+                        sendUpdateNotification(cleanTag)
                     } else {
                         _updateState.value = UpdateState.UpToDate(currentVersion)
                         Logger.i("AutoUpdater", "AG Client is up to date: $currentVersion")
@@ -104,6 +150,8 @@ class AutoUpdater(private val context: Context) {
                 } else if (code == 404) {
                     _updateState.value = UpdateState.UpToDate(currentVersion)
                     Logger.i("AutoUpdater", "No releases published yet on GitHub. Up to date.")
+                } else if (code == 403) {
+                    Logger.w("AutoUpdater", "GitHub API rate limit reached. Next auto-check will run in 30 minutes.")
                 } else {
                     val err = "HTTP $code from GitHub releases API"
                     Logger.w("AutoUpdater", err)
@@ -113,6 +161,47 @@ class AutoUpdater(private val context: Context) {
                 Logger.e("AutoUpdater", "Failed to check for updates", e)
                 if (!silent) _updateState.value = UpdateState.Error("Update check failed: ${e.message}")
             }
+        }
+    }
+
+    private fun sendUpdateNotification(version: String) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    "App Updates",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Notifications when a new version of AG Client is released"
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                2001,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("New AG Client Update Available!")
+                .setContentText("Version v$version is available. Tap to open and update.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            notificationManager.notify(NOTIFICATION_ID_UPDATE, notification)
+            Logger.i("AutoUpdater", "Dispatched update notification for v$version")
+        } catch (e: Exception) {
+            Logger.e("AutoUpdater", "Failed to send update notification", e)
         }
     }
 

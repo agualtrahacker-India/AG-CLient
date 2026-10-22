@@ -154,6 +154,9 @@ class BedrockProxyService : Service() {
 
                 updateNotification("Proxy Active on port ${config.localBindPort}")
 
+                // Broadcast LAN discovery Pong so AG Client appears directly in Minecraft Friends tab
+                startLanBroadcaster()
+
             } catch (t: Throwable) {
                 Logger.e("ProxyService", "Failed to start Bedrock proxy", t)
                 _serviceState.value = ServiceState.ERROR

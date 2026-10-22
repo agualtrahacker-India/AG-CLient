@@ -1,11 +1,12 @@
 package com.aayaan.agclient.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -18,9 +19,9 @@ import com.aayaan.agclient.updater.UpdateState
 @Composable
 fun UpdateCard(
     updateState: UpdateState,
-    onCheckUpdate: () -> Unit,
     onDownloadUpdate: (String) -> Unit,
     onInstallApk: (java.io.File) -> Unit,
+    onCheckUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -51,23 +52,33 @@ fun UpdateCard(
                     )
                 }
 
-                IconButton(onClick = onCheckUpdate) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Check for Updates", tint = TextSecondary)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = DarkBackground,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                ) {
+                    Text(
+                        text = "Every 30m",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
 
             when (updateState) {
                 is UpdateState.Idle -> {
-                    Text(
-                        text = "Version: 1.0.0-beta (Latest GitHub Release Tracking)",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    OutlinedButton(
-                        onClick = onCheckUpdate,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan)
-                    ) {
-                        Text("Check for Updates")
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Version: 2.6.1 (Active)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Background auto-check runs every 30 minutes from app open.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
                     }
                 }
                 is UpdateState.Checking -> {
@@ -76,28 +87,46 @@ fun UpdateCard(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(20.dp))
-                        Text(text = "Checking GitHub Releases...", style = MaterialTheme.typography.bodyMedium)
+                        CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = "Checking GitHub Releases in background...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
                     }
                 }
                 is UpdateState.UpToDate -> {
-                    Text(
-                        text = "✓ AG Client is up to date (${updateState.currentVersion})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AccentGreen
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CloudDone, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = "AG Client is up to date (${updateState.currentVersion})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = AccentGreen
+                            )
+                        }
+                        Text(
+                            text = "Next background check in 30 minutes.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
                 }
                 is UpdateState.UpdateAvailable -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = "⚡ New Update Available: v${updateState.version}",
                             style = MaterialTheme.typography.titleMedium,
                             color = AccentGreen
                         )
-                        if (updateState.releaseNotes.isNotEmpty()) {
+                        if (updateState.releaseNotes.isNotBlank()) {
                             Text(
                                 text = updateState.releaseNotes.take(150),
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
                             )
                         }
                         Button(
@@ -107,7 +136,7 @@ fun UpdateCard(
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, tint = DarkBackground)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Download & Install Update", color = DarkBackground)
+                            Text("Update App (Download v${updateState.version})", color = DarkBackground)
                         }
                     }
                 }
@@ -136,18 +165,17 @@ fun UpdateCard(
                     }
                 }
                 is UpdateState.Error -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = updateState.message,
                             style = MaterialTheme.typography.bodyMedium,
                             color = AccentRed
                         )
-                        OutlinedButton(
-                            onClick = onCheckUpdate,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
-                        ) {
-                            Text("Retry Check")
-                        }
+                        Text(
+                            text = "Auto-checker will retry automatically in 30 minutes.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
                     }
                 }
             }

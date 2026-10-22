@@ -59,26 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.4.0-release
+          name: AG-Client-v2.5.0-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.4.0
-          name: "AG Client v2.4.0 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.5.0
+          name: "AG Client v2.5.0 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.4.0)
+            ### AG Client (v2.5.0)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.4.0:
-            - **Intelligent Network Detection (SIM Net vs Wi-Fi):** Fixed bug where cellular connections were mislabeled as Wi-Fi. Accurately identifies Cellular Data vs Wi-Fi LAN using Android's `ConnectivityManager`.
-            - **SIM Net / Mobile Data Support:** Detects cellular data and guides connection via `127.0.0.1:19133`, avoiding carrier CGNAT self-loopback drops, with 1-tap copy and in-game "Use Cellular Data" requirement guide.
-            - **Zero Default/Hardcoded Servers:** No preset or featured server chips. The user has 100% control over target IPs. Server history only records servers the user actually joins.
-            - **No More 30-Second Silent Hangs:** Instant Netty timeout handling and immediate descriptive disconnect messages if target server is unreachable or offline.
-            - **Keyed Compose Modules & Instant Disk Persistence:** Zero toggle crosstalk (e.g. Fly vs KillAura) and state resets when changing tabs.
-            - **Duplicate App Cleanup:** Auto-detects legacy installations (`com.aayaan.agclient.debug`) with a 1-tap uninstaller.
+            #### What's New in v2.5.0:
+            - **Virtual Sandbox Router (10.0.0.1):** Isolated local network sandbox on your phone. Eliminates connection timeouts on SIM Net/mobile data and Wi-Fi without carrier interference.
+            - **Full Internet Retention in Sandbox:** Minecraft retains 100% full internet connectivity for Xbox Live, Microsoft authentication, skins, and Marketplace.
+            - **In-Game Join Welcome & Attribution:** Displays private client message on server join: "AG Client v2.5.0 - Made by Aayaan Ghosh" with prompts to run `.help`.
+            - **Lunar-Style Chat Commands:** `.help`, `/help`, `.cmds`, `/commands` prints all 70 commands categorized directly in chat text (no modal GUI).
+            - **Dynamic Quick Connect Card:** Automatically switches between Virtual Sandbox IP (10.0.0.1) and Local Loopback (127.0.0.1) or Wi-Fi IP with 1-tap copy.
+            - **Zero Default/Hardcoded Servers:** No preset or featured server chips. History strictly records user-joined servers.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

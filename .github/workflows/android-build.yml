@@ -59,28 +59,25 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.6.0-release
+          name: AG-Client-v2.6.1-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.6.0
-          name: "AG Client v2.6.0 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.6.1
+          name: "AG Client v2.6.1 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.6.0)
+            ### AG Client (v2.6.1)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.6.0:
-            - **Fixed Virtual Sandbox Connection (10.0.0.1):** Solved reverse packet routing IP mismatch (Source IP was previously inverted). Minecraft now receives every response packet instantly without drops or timeouts.
-            - **Per-Port Multiplexed Sockets:** Independent relay sockets for each client port (ping, join, handshake) preventing race conditions and dropped packets.
-            - **Full RFC Checksums:** Complete IPv4 header checksum and UDP checksum calculation to prevent packet dropping by Android kernel BPF filters.
-            - **Fallback Target Server:** Prevents empty target server disconnects; automatically defaults to `geo.hivebedrock.network:19132`.
-            - **Handshake Packet Pipeline:** Bridged `ClientToServerHandshakePacket` for reliable session transitions.
-            - **Added 1.21.40 - 1.21.60 Codec Discovery:** Added discovery for newer protocol versions (v748, v766, v776).
-            - **In-Game Join Welcome & Attribution:** Displays private client message on server join: "AG Client v2.6.0 - Made by Aayaan Ghosh" with prompts to run `.help`.
-            - **Lunar-Style Chat Commands:** `.help`, `/help`, `.cmds`, `/commands` prints all 70 commands categorized directly in chat text (no modal GUI).
+            #### What's New in v2.6.1:
+            - **Eliminated Connection Timed Out Root Causes:** Added upstream connection watchdog timer (preventing silent 30-second client hangs), full bidirectional disconnect propagation, and codec protocol version alignment.
+            - **Fixed Dynamic Sandbox Routing:** Bound sandbox relay to configured proxy bind port dynamically, preserved exact client source IP in reverse packets, and enhanced package detection with clean fallback.
+            - **Modernized UI Connection Steps:** Completely refreshed connection instructions to match modern Minecraft Bedrock 1.21+ ("Servers" tab / Ore UI), removed confusing outdated LAN Worlds / 19132 references, and dynamically synchronized active IP (`10.0.0.1` vs local IP) across all dashboard cards.
+            - **In-Game Join Welcome & Attribution:** Displays private client message on server join: "AG Client v2.6.1 - Made by Aayaan Ghosh" with prompts to run `.help`.
+            - **70+ Commands & Utilities Suite:** Full Lunar-style in-game dot/slash commands (`.help`, `/menu`, `.bind`, etc.).
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

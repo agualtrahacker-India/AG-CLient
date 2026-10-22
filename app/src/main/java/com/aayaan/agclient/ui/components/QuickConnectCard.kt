@@ -361,15 +361,14 @@ fun QuickConnectCard(
                         color = TextPrimary
                     )
                     Text(
-                        text = "1. Enter your target server IP & port in the config card below.\n" +
-                                "2. Start proxy above.\n" +
-                                "3. Tap 'Copy $detectedIp' and 'Launch Minecraft'.\n" +
+                        text = "1. Set your target destination server in the config card below.\n" +
+                                "2. Start ${if (isSandboxRunning) "Virtual Sandbox" else "Proxy"} above.\n" +
+                                "3. Tap 'Copy $currentIp' and 'Launch Minecraft'.\n" +
                                 "4. In Minecraft: Tap Play.\n" +
-                                "5. In New 1.21+ UI: Tap Servers icon (stacked cubes 🖥️ on left sidebar) ➡️ Scroll to bottom & tap 'Add Server'.\n" +
-                                "   (In Classic UI: Tap 'Servers' tab at the top ➡️ Add Server).\n" +
-                                "6. Enter details:\n" +
+                                "5. Tap the 'Servers' tab (or Servers icon 🖥️) ➡️ Scroll down to Additional Servers & tap 'Add Server'.\n" +
+                                "6. Enter connection details:\n" +
                                 "   • Server Name: AG Client\n" +
-                                "   • Server Address: $detectedIp\n" +
+                                "   • Server Address: $currentIp\n" +
                                 "   • Port: $localPort\n" +
                                 "7. Tap Save & Join!",
                         style = MaterialTheme.typography.bodySmall,

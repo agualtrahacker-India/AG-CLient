@@ -104,7 +104,7 @@ class CommandManager(
 
             override fun execute(args: List<String>, session: ProxySession) {
                 session.sendChatToClient("§8§m----------------------------------------")
-                session.sendChatToClient("§b§lAG Client §f[v2.6.0] §7- §a§lMade by Aayaan Ghosh")
+                session.sendChatToClient("§b§lAG Client §f[v2.6.1] §7- §a§lMade by Aayaan Ghosh")
                 session.sendChatToClient("§eAvailable Commands List:")
                 session.sendChatToClient("§6• Core: §f.help, .menu, .bind, .config, .disableall, .ghost, .relog, .panic, .coords")
                 session.sendChatToClient("§c• Combat: §f.reach, .killaura, .tpaura, .hitbox, .knockback, .knockbackdelay, .backtrack, .triggerbot, .autoclicker, .afkclicker, .doubleclick, .autototem, .autopotion, .autocrystal, .anticrystal, .autocart, .autoweb, .autojumpreset, .autocrit, .autoswitch, .maceswap, .macedmg, .shielddisabler, .aimassist, .autolog, .anchoraura, .multiaura, .infiniteaura, .projectileaimbot")

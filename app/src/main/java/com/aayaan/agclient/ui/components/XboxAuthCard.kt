@@ -17,6 +17,8 @@ import com.aayaan.agclient.ui.theme.*
 @Composable
 fun XboxAuthCard(
     authState: XboxAuthState? = null,
+    currentIp: String = "10.0.0.1",
+    localPort: Int = 19133,
     onLoginClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -75,7 +77,7 @@ fun XboxAuthCard(
                     }
 
                     Text(
-                        text = "• Uses your actual in-game Minecraft profile, Gamertag, and skin automatically.\n• No web browser login or device code required.\n• Simply tap 'START PROXY', open Minecraft, and join through 'Friends' -> 'LAN Worlds' (or 127.0.0.1:19132)!",
+                        text = "• Uses your actual in-game Minecraft profile, Gamertag, and skin automatically.\n• No web browser login or device code required.\n• Simply tap 'START SANDBOX' or 'START PROXY', open Minecraft, and connect via Servers ➡️ Add Server ($currentIp:$localPort)!",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )

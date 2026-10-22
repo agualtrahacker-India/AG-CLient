@@ -35,6 +35,7 @@ class AGVirtualSandboxService : VpnService() {
     private val clientRoutes = ConcurrentHashMap<Int, ClientRoute>()
 
     private class ClientRoute(
+        val clientIp: ByteArray,
         val clientPort: Int,
         val serverPort: Int,
         val serverIp: ByteArray,
@@ -78,7 +79,8 @@ class AGVirtualSandboxService : VpnService() {
         isRunning = true
         _isSandboxRunning.value = true
 
-        val notification = buildNotification("Virtual Sandbox Active (10.0.0.1:19133)")
+        val localPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
+        val notification = buildNotification("Virtual Sandbox Active (10.0.0.1:$localPort)")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceCompat.startForeground(
@@ -110,10 +112,19 @@ class AGVirtualSandboxService : VpnService() {
                     "com.microsoft.minecraft"
                 )
 
+                var addedAny = false
                 for (pkg in mcPackages) {
                     try {
                         builder.addAllowedApplication(pkg)
+                        addedAny = true
                         Logger.d("VirtualSandbox", "Added $pkg to sandbox routing filter.")
+                    } catch (_: Exception) {}
+                }
+
+                if (!addedAny) {
+                    try {
+                        builder.addDisallowedApplication(packageName)
+                        Logger.i("VirtualSandbox", "No standard Minecraft package found; disallowed AG Client to route sandbox subnet.")
                     } catch (_: Exception) {}
                 }
 
@@ -136,7 +147,8 @@ class AGVirtualSandboxService : VpnService() {
 
         scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(32768)
-            val proxyTarget = InetSocketAddress("127.0.0.1", 19133)
+            val localPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
+            val proxyTarget = InetSocketAddress("127.0.0.1", localPort)
 
             try {
                 while (isRunning && isActive) {
@@ -172,7 +184,7 @@ class AGVirtualSandboxService : VpnService() {
                     if (payloadLength <= 0) continue
 
                     // Dedicated multiplexed route per clientPort
-                    val route = getOrCreateRoute(srcPort, dstPort, dstIp, outputStream)
+                    val route = getOrCreateRoute(srcIp, srcPort, dstPort, dstIp, outputStream)
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
                         route.socket.send(packet)
@@ -184,6 +196,7 @@ class AGVirtualSandboxService : VpnService() {
     }
 
     private fun getOrCreateRoute(
+        clientIp: ByteArray,
         clientPort: Int,
         serverPort: Int,
         serverIp: ByteArray,
@@ -210,8 +223,8 @@ class AGVirtualSandboxService : VpnService() {
                         if (replyLen > 0) {
                             val ipPacket = buildUdpIpPacket(
                                 srcIp = serverIp, // 10.0.0.1 (the virtual server)
-                                dstIp = byteArrayOf(10, 0, 0, 2), // Minecraft
-                                srcPort = serverPort, // 19133
+                                dstIp = clientIp, // Minecraft client IP
+                                srcPort = serverPort, // dstPort from client
                                 dstPort = clientPort, // Minecraft client port
                                 payload = replyPacket.data,
                                 payloadOffset = replyPacket.offset,
@@ -232,7 +245,7 @@ class AGVirtualSandboxService : VpnService() {
                 }
             }
 
-            ClientRoute(clientPort, serverPort, serverIp, relaySocket, job)
+            ClientRoute(clientIp, clientPort, serverPort, serverIp, relaySocket, job)
         }
     }
 

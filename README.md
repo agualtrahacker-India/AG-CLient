@@ -1,7 +1,7 @@
-# 🛡️ AG Client (v2.6.0) - Standalone Minecraft Bedrock Proxy for Android
+# 🛡️ AG Client (v2.6.1) - Standalone Minecraft Bedrock Proxy for Android
 
 [![Android CI & Release](https://github.com/agualtrahacker-India/AG-CLient/actions/workflows/android-build.yml/badge.svg)](https://github.com/agualtrahacker-India/AG-CLient/actions)
-![Version](https://img.shields.io/badge/Release-v2.6.0-blueviolet)
+![Version](https://img.shields.io/badge/Release-v2.6.1-blueviolet)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-brightgreen)
 ![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2014%20(API%2034)-blue)
 ![Bedrock Protocol](https://img.shields.io/badge/Bedrock%20Protocol-CloudburstMC%201.21%2B-purple)
@@ -14,18 +14,15 @@
 
 ---
 
-## ✨ What's New in v2.6.0
+## ✨ What's New in v2.6.1
 
-* 🛠️ **Fixed Virtual Sandbox Packet Routing (`10.0.0.1`)**: Fixed critical reverse IP routing bug where return UDP packets had inverted source addresses, causing Android kernel to drop packets. Every packet now reaches Minecraft instantly.
-* ⚡ **Per-Port Multiplexed Relay Sockets**: Each Minecraft client UDP port now has its own protected datagram relay channel, preventing port collision during server list pings and joins.
-* 🧮 **Complete RFC UDP & IPv4 Checksums**: Handcrafted checksum algorithms (RFC 768 / RFC 791) ensuring zero packet dropping by cellular/Android BPF filters.
-* 🛡️ **Zero-Failure Fallback Target**: If no server is typed in, AG Client automatically connects to `geo.hivebedrock.network:19132` instead of aborting the connection.
-* 🔄 **Handshake Pipeline Support**: Added explicit forwarding for `ClientToServerHandshakePacket` to maintain protocol synchronization.
-* 🌐 **Full Internet Retention in Sandbox**: Minecraft retains 100% normal internet access—Xbox Live sign-in, Microsoft account authentication, custom skins, and Marketplace work flawlessly while routing through the sandbox.
+* ⏱️ **Eliminated Connection Timed Out Root Causes**: Solved connection hang when remote servers delay handshake responses with an active 6-second watchdog timer, full bidirectional disconnect event propagation, and session codec version alignment.
+* 🛡️ **Dynamic Virtual Sandbox Routing (`10.0.0.1`)**: Automatically binds to configured proxy port, routes Minecraft response packets to exact client source IP, and handles fallback application package routing safely.
+* 📋 **Modernized UI Setup & Instructions**: Completely synchronized connection steps across all dashboard cards for modern Minecraft Bedrock 1.21+ (Servers tab / Ore UI), removing confusing legacy LAN Worlds / 19132 references.
 * 💬 **In-Game Join Welcome & Attribution**: When spawning on any server, a private message is sent to your chat:
   ```text
   ----------------------------------------
-  AG Client v2.6.0 - Made by Aayaan Ghosh
+  AG Client v2.6.1 - Made by Aayaan Ghosh
   Connected to server successfully!
   Type .help or /help to see command lists.
   ----------------------------------------
@@ -38,7 +35,7 @@
 ## 🚀 Complete Quick Start & Connection Guide
 
 ### 1. Installation
-1. Download the latest **`AG-Client-v2.6.0-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
+1. Download the latest **`AG-Client-v2.6.1-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
 2. Install the APK on your Android device (Play Protect verifies it is clean and safe).
 
 ---
@@ -52,7 +49,7 @@
 4. Tap **"Copy 10.0.0.1"**.
 5. Tap **"Launch Minecraft"** (or open Minecraft):
    - Tap **Play**.
-   - Tap **Servers** (the stacked cubes icon 🖥️ on the left sidebar in 1.21+ UI, or the "Servers" tab in Classic UI).
+   - Tap **Servers** (the "Servers" tab at the top or stacked cubes icon 🖥️ in Ore UI).
    - Scroll down to the bottom and tap **"Add Server"**.
    - **Server Name:** `AG Client`
    - **Server Address:** `10.0.0.1`

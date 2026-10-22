@@ -62,6 +62,14 @@ class ProxySession(
                 }
                 return PacketSignal.HANDLED
             }
+
+            override fun onDisconnect(reason: String) {
+                Logger.i("ProxySession", "Local Minecraft client disconnected: $reason")
+                try {
+                    clientSession?.disconnect("Client disconnected")
+                } catch (_: Exception) {}
+                cleanup()
+            }
         })
     }
 
@@ -171,6 +179,13 @@ class ProxySession(
                 }
             })
 
+        val watchdogTask = tickExecutor.schedule({
+            if (!future.isDone) {
+                Logger.w("ProxySession", "Upstream connection to $targetHost:$targetPort timed out after 6 seconds.")
+                future.completeExceptionally(java.util.concurrent.TimeoutException("Remote server $targetHost:$targetPort did not respond within 6 seconds"))
+            }
+        }, 6000, TimeUnit.MILLISECONDS)
+
         bootstrap.connect(targetAddress).addListener { connFuture ->
             if (!connFuture.isSuccess) {
                 future.completeExceptionally(connFuture.cause())
@@ -178,14 +193,16 @@ class ProxySession(
         }
 
         future.whenComplete { session, connErr ->
+            watchdogTask.cancel(false)
             if (connErr != null) {
                 Logger.e("ProxySession", "Failed to connect to $targetHost:$targetPort", connErr)
                 try {
                     val msg = connErr.message ?: "Connection timed out"
-                    serverSession.disconnect("§c[AG Client] Remote Server Unreachable!\n§7Server: §e$targetHost:$targetPort\n§cReason: §f$msg\n§ePlease verify target IP & port in AG Client.")
+                    serverSession.disconnect("§c[AG Client] Connection Timed Out!\n§7Server: §e$targetHost:$targetPort\n§cReason: §f$msg\n§ePlease verify target IP & port in AG Client.")
                 } catch (_: Exception) {
                     serverSession.disconnect()
                 }
+                cleanup()
                 return@whenComplete
             }
 
@@ -203,13 +220,14 @@ class ProxySession(
 
             setupRemoteSessionHandler(session)
 
-            // Request network settings from upstream server
+            // Request network settings from upstream server using the best codec we support
+            val effectiveProto = session.codec?.protocolVersion ?: clientProtocolVersion
             val upstreamReq = RequestNetworkSettingsPacket().apply {
-                protocolVersion = clientProtocolVersion
+                protocolVersion = effectiveProto
             }
             try {
                 session.sendPacketImmediately(upstreamReq)
-                Logger.i("ProxySession", "Sent RequestNetworkSettingsPacket ($clientProtocolVersion) to upstream server.")
+                Logger.i("ProxySession", "Sent RequestNetworkSettingsPacket ($effectiveProto) to upstream server.")
             } catch (e: Exception) {
                 Logger.e("ProxySession", "Failed to send RequestNetworkSettingsPacket upstream", e)
                 session.sendPacket(packet)
@@ -248,7 +266,29 @@ class ProxySession(
                 }
                 return PacketSignal.HANDLED
             }
+
+            override fun onDisconnect(reason: String) {
+                Logger.w("ProxySession", "Upstream server disconnected session: $reason")
+                try {
+                    serverSession.disconnect("§c[AG Client] Disconnected from Server\n§7Reason: §f$reason")
+                } catch (_: Exception) {
+                    serverSession.disconnect()
+                }
+                cleanup()
+            }
         })
+
+        try {
+            session.peerChannel?.closeFuture()?.addListener {
+                if (serverSession.isConnected) {
+                    Logger.i("ProxySession", "Upstream channel closed. Terminating local session.")
+                    try {
+                        serverSession.disconnect("§c[AG Client] Server connection closed.")
+                    } catch (_: Exception) {}
+                }
+                cleanup()
+            }
+        } catch (_: Exception) {}
     }
 
     private var hasSentWelcomeMessage = false
@@ -256,7 +296,7 @@ class ProxySession(
     private fun sendWelcomeMessage() {
         if (config.isGhostMode) return
         sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.6.0 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§b§lAG Client §fv2.6.1 §7- §a§lMade by Aayaan Ghosh")
         sendChatToClient("§aConnected to server successfully!")
         sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
         sendChatToClient("§8§m----------------------------------------")
@@ -318,14 +358,23 @@ class ProxySession(
         serverSession.sendPacket(textPacket)
     }
 
+    fun cleanup() {
+        try {
+            tickExecutor.shutdownNow()
+        } catch (_: Exception) {}
+        try {
+            clientEventLoopGroup?.shutdownGracefully(0, 500, TimeUnit.MILLISECONDS)
+            clientEventLoopGroup = null
+        } catch (_: Exception) {}
+        worldState.reset()
+    }
+
     fun close() {
-        tickExecutor.shutdownNow()
+        cleanup()
         try {
             clientSession?.disconnect()
             serverSession.disconnect()
-            clientEventLoopGroup?.shutdownGracefully()
         } catch (_: Exception) {}
-        worldState.reset()
         Logger.i("ProxySession", "Proxy session terminated.")
     }
 }

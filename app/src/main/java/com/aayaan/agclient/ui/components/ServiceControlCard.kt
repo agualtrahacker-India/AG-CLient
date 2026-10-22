@@ -101,7 +101,7 @@ fun ServiceControlCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "✓ Local Proxy active on port $localPort\n✓ In Minecraft: Go to Servers ➡️ Add Server (Address: 127.0.0.1 or 10.0.0.1 with Sandbox)",
+                        text = "✓ Local Proxy active on port $localPort\n✓ In Minecraft: Go to Servers ➡️ Add Server (Address: ${if (isSandboxRunning) "10.0.0.1" else "127.0.0.1"} | Port: $localPort)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AccentGreen,
                         modifier = Modifier.padding(10.dp)

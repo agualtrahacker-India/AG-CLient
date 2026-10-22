@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -22,6 +24,12 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
 
+enum class NetworkType {
+    WIFI,
+    CELLULAR,
+    LOOPBACK_ONLY
+}
+
 @Composable
 fun QuickConnectCard(
     targetServer: String = "",
@@ -30,35 +38,53 @@ fun QuickConnectCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var wifiIp by remember { mutableStateOf<String?>(null) }
+    var networkType by remember { mutableStateOf(NetworkType.LOOPBACK_ONLY) }
+    var detectedIp by remember { mutableStateOf("127.0.0.1") }
 
-    fun refreshNetworkIp() {
+    fun refreshNetworkState() {
         try {
-            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            var foundIp: String? = null
-            for (intf in interfaces) {
-                if (intf.isLoopback || !intf.isUp) continue
-                val addrs = Collections.list(intf.inetAddresses)
-                for (addr in addrs) {
-                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
-                        val host = addr.hostAddress
-                        if (!host.isNullOrEmpty() && !host.startsWith("10.8.")) {
-                            foundIp = host
-                            break
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = cm.activeNetwork
+            val caps = cm.getNetworkCapabilities(activeNetwork)
+
+            val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val isCellular = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+
+            if (isWifi) {
+                networkType = NetworkType.WIFI
+                // Find actual wlan interface IPv4
+                var wifiIp: String? = null
+                val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+                for (intf in interfaces) {
+                    if (intf.isUp && (intf.name.startsWith("wlan", ignoreCase = true) || intf.name.startsWith("wifi", ignoreCase = true))) {
+                        for (addr in Collections.list(intf.inetAddresses)) {
+                            if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                                wifiIp = addr.hostAddress
+                                break
+                            }
                         }
                     }
+                    if (wifiIp != null) break
                 }
-                if (foundIp != null) break
+                detectedIp = wifiIp ?: "127.0.0.1"
+            } else if (isCellular) {
+                networkType = NetworkType.CELLULAR
+                // On cellular data, cellular carrier CGNAT IPs (100.x.x.x) DO NOT allow self-loopback.
+                // The ONLY working local address on SIM net is 127.0.0.1
+                detectedIp = "127.0.0.1"
+            } else {
+                networkType = NetworkType.LOOPBACK_ONLY
+                detectedIp = "127.0.0.1"
             }
-            wifiIp = foundIp
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            networkType = NetworkType.LOOPBACK_ONLY
+            detectedIp = "127.0.0.1"
+        }
     }
 
     LaunchedEffect(Unit) {
-        refreshNetworkIp()
+        refreshNetworkState()
     }
-
-    val displayIp = wifiIp ?: "127.0.0.1"
 
     Card(
         modifier = modifier
@@ -95,10 +121,10 @@ fun QuickConnectCard(
                     )
                 }
 
-                IconButton(onClick = { refreshNetworkIp() }) {
+                IconButton(onClick = { refreshNetworkState() }) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh IP",
+                        contentDescription = "Refresh Network",
                         tint = NeonCyan,
                         modifier = Modifier.size(20.dp)
                     )
@@ -150,21 +176,53 @@ fun QuickConnectCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (wifiIp != null) "Server Address (Your Device IP)" else "Server Address (Local)",
+                                text = when (networkType) {
+                                    NetworkType.WIFI -> "Server Address (Wi-Fi LAN IP)"
+                                    NetworkType.CELLULAR -> "Server Address (Mobile Data / SIM Net)"
+                                    NetworkType.LOOPBACK_ONLY -> "Server Address (Local Loopback)"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = displayIp,
+                                text = detectedIp,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
                             )
-                            Text(
-                                text = if (wifiIp != null) "Connected on Wi-Fi" else "Loopback (127.0.0.1)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (wifiIp != null) AccentGreen else TextSecondary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (networkType) {
+                                        NetworkType.WIFI -> Icons.Default.Wifi
+                                        NetworkType.CELLULAR -> Icons.Default.SignalCellularAlt
+                                        NetworkType.LOOPBACK_ONLY -> Icons.Default.PhoneAndroid
+                                    },
+                                    contentDescription = null,
+                                    tint = when (networkType) {
+                                        NetworkType.WIFI -> AccentGreen
+                                        NetworkType.CELLULAR -> NeonCyan
+                                        NetworkType.LOOPBACK_ONLY -> TextSecondary
+                                    },
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = when (networkType) {
+                                        NetworkType.WIFI -> "Active: Wi-Fi Network"
+                                        NetworkType.CELLULAR -> "Active: Mobile Data (SIM Net)"
+                                        NetworkType.LOOPBACK_ONLY -> "Active: Local Device Only"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = when (networkType) {
+                                        NetworkType.WIFI -> AccentGreen
+                                        NetworkType.CELLULAR -> NeonCyan
+                                        NetworkType.LOOPBACK_ONLY -> TextSecondary
+                                    }
+                                )
+                            }
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
@@ -182,23 +240,27 @@ fun QuickConnectCard(
                         }
                     }
 
-                    if (wifiIp != null) {
+                    // Special alert for SIM Net users
+                    if (networkType == NetworkType.CELLULAR) {
                         HorizontalDivider(color = DarkCardBorder)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            color = NeonCyan.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "Loopback fallback:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary
-                            )
-                            Text(
-                                text = "127.0.0.1",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "📱 SIM Net / Mobile Data Requirement:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NeonCyan
+                                )
+                                Text(
+                                    text = "Minecraft blocks multiplayer on SIM data by default. Open Minecraft ➡️ Settings ➡️ General (or Profile) ➡️ Turn ON 'Use Cellular Data'.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextPrimary
+                                )
+                            }
                         }
                     }
                 }
@@ -212,9 +274,9 @@ fun QuickConnectCard(
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Server Address", displayIp)
+                        val clip = ClipData.newPlainText("Server Address", detectedIp)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied Address: $displayIp", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Copied IP: $detectedIp", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
@@ -228,7 +290,7 @@ fun QuickConnectCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Copy IP", color = NeonCyan)
+                    Text(text = "Copy $detectedIp", color = NeonCyan)
                 }
 
                 Button(
@@ -289,17 +351,17 @@ fun QuickConnectCard(
                         color = TextPrimary
                     )
                     Text(
-                        text = "1. Enter your destination server IP & port in the config card below.\n" +
+                        text = "1. Enter your target server IP & port in the config card below.\n" +
                                 "2. Start proxy above.\n" +
-                                "3. Tap 'Copy IP' and 'Launch Minecraft'.\n" +
+                                "3. Tap 'Copy $detectedIp' and 'Launch Minecraft'.\n" +
                                 "4. In Minecraft: Tap Play.\n" +
                                 "5. In New 1.21+ UI: Tap Servers icon (stacked cubes 🖥️ on left sidebar) ➡️ Scroll to bottom & tap 'Add Server'.\n" +
                                 "   (In Classic UI: Tap 'Servers' tab at the top ➡️ Add Server).\n" +
                                 "6. Enter details:\n" +
                                 "   • Server Name: AG Client\n" +
-                                "   • Server Address: $displayIp\n" +
+                                "   • Server Address: $detectedIp\n" +
                                 "   • Port: $localPort\n" +
-                                "7. Tap Save & Join! (Saved in your server list forever).",
+                                "7. Tap Save & Join!",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )

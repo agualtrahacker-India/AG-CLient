@@ -88,7 +88,10 @@ fun ModulesScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(filteredModules) { module ->
+            items(
+                items = filteredModules,
+                key = { it.name }
+            ) { module ->
                 ModuleCard(
                     module = module,
                     onToggle = { isEnabled ->

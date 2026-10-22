@@ -143,11 +143,15 @@ class ProxySession(
 
         // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
         val targetHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
-        val targetPort = DynamicTargetTracker.activeTargetPort
+        val targetPort = if (DynamicTargetTracker.activeTargetHost != null) DynamicTargetTracker.activeTargetPort else config.targetPort
 
         if (targetHost.isBlank()) {
             Logger.w("ProxySession", "Connection aborted: Target server address is empty.")
-            sendChatToClient("§c[AG Client] No target server specified! Please open the AG Client app and select or type a server address.")
+            try {
+                serverSession.disconnect("§c[AG Client] No Target Server!\n§eOpen AG Client & select a server from history.")
+            } catch (_: Exception) {
+                serverSession.disconnect()
+            }
             return
         }
 
@@ -229,9 +233,8 @@ class ProxySession(
                 }
 
                 if (packet is ServerToClientHandshakePacket) {
-                    Logger.i("ProxySession", "Upstream server requested handshake. Responding with ClientToServerHandshakePacket.")
-                    val clientHandshake = ClientToServerHandshakePacket()
-                    session.sendPacket(clientHandshake)
+                    Logger.i("ProxySession", "Upstream server requested handshake. Forwarding to Minecraft client.")
+                    serverSession.sendPacket(packet)
                     return PacketSignal.HANDLED
                 }
 

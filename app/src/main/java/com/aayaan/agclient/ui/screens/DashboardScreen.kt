@@ -10,6 +10,7 @@ import com.aayaan.agclient.auth.XboxAuthManager
 import com.aayaan.agclient.auth.XboxAuthState
 import com.aayaan.agclient.config.ProxyConfig
 import com.aayaan.agclient.proxy.ServiceState
+import com.aayaan.agclient.ui.components.LegacyCleanupCard
 import com.aayaan.agclient.ui.components.QuickConnectCard
 import com.aayaan.agclient.ui.components.ServerConfigCard
 import com.aayaan.agclient.ui.components.ServiceControlCard
@@ -38,6 +39,8 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        LegacyCleanupCard()
+
         ServiceControlCard(
             serviceState = serviceState,
             onStartService = onStartService,

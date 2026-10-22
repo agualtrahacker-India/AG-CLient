@@ -23,19 +23,18 @@ fun ModuleCard(
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var enabled by remember { mutableStateOf(module.isEnabled) }
+    var expanded by remember(module.name) { mutableStateOf(false) }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .border(
                 1.dp,
-                if (enabled) NeonCyan.copy(alpha = 0.5f) else DarkCardBorder,
+                if (module.isEnabled) NeonCyan.copy(alpha = 0.5f) else DarkCardBorder,
                 RoundedCornerShape(10.dp)
             ),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) DarkSurface else DarkBackground
+            containerColor = if (module.isEnabled) DarkSurface else DarkBackground
         ),
         shape = RoundedCornerShape(10.dp)
     ) {
@@ -57,7 +56,7 @@ fun ModuleCard(
                         Text(
                             text = module.name,
                             style = MaterialTheme.typography.titleMedium,
-                            color = if (enabled) NeonCyan else TextPrimary
+                            color = if (module.isEnabled) NeonCyan else TextPrimary
                         )
                         Text(
                             text = ".${module.commandName}",
@@ -76,11 +75,8 @@ fun ModuleCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Switch(
-                        checked = enabled,
-                        onCheckedChange = {
-                            enabled = it
-                            onToggle(it)
-                        },
+                        checked = module.isEnabled,
+                        onCheckedChange = { onToggle(it) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = NeonCyan,
                             checkedTrackColor = DarkCard

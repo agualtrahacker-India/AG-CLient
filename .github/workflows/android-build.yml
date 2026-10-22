@@ -59,26 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.0-beta-release
+          name: AG-Client-v2.1.0-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0-beta
-          name: "AG Client v2.0-beta - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.1.0
+          name: "AG Client v2.1.0 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.0-beta)
+            ### AG Client (v2.1.0)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### v2.0-beta Highlights:
-            - **Port 19133 Default:** Binds to UDP port `19133` avoiding Android Minecraft 19132 LAN conflicts.
-            - **Consistent Developer Signature:** All APKs are consistently signed with the permanent release keystore for seamless in-app auto-updating without signature conflicts.
-            - **Persistent Server History:** All joined servers are automatically remembered and preserved across app updates with 1-tap switching.
-            - **Live Server Reachability Checker:** Ping and verify target Bedrock servers in real-time before joining.
-            - **Background Persistence:** High-performance `WifiLock`, `WakeLock`, and ongoing notification prevent Android OS termination.
-            - **Full 70 Modules & Commands Suite:** Complete coverage of all Combat, Movement, Visual, World, and Core utility modules.
+            #### What's New in v2.1.0:
+            - **Fixed Module Crosstalk & Auto-Off Bug:** Resolved Compose LazyColumn index recycling bug causing Fly and KillAura toggle collisions. All module toggles now mutate reactive state directly and persist immediately to disk, preventing resets when switching tabs or reopening the app.
+            - **Eliminated Connection Timed Out:** Fixed upstream handshake stalls by properly forwarding `ServerToClientHandshakePacket`. Handled blank target servers with an immediate, clear disconnect message instead of a 30-second silent timeout.
+            - **Permanent Loopback IP (127.0.0.1):** Highlighted `127.0.0.1:19133` so your Minecraft server list entry never needs updating when switching between Wi-Fi and Mobile Data. Added 1-tap Copy IP & Port buttons.
+            - **Minecraft 1.21+ (Ore UI) Play Screen Guide:** Updated connection instructions with exact sidebar icon steps (Servers icon 🖥️ and Friends icon 👥) for Minecraft Bedrock 1.21+.
+            - **Duplicate App Cleanup:** Auto-detects older legacy installations (`com.aayaan.agclient.debug`) and provides a 1-tap uninstaller so you never have duplicate app icons on your phone.
+            - **Seamless Auto-Updater:** In-app updates now seamlessly support all major, minor, and patch releases (e.g., 2.0.1, 2.1.0, 2.2.0) with consistent keystore verification.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

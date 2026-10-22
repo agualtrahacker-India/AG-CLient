@@ -172,5 +172,6 @@ class ModuleManager(private val configManager: ConfigManager) {
         for (module in modules) {
             config.moduleStates[module.name] = module.isEnabled
         }
+        configManager.saveConfig("default")
     }
 }

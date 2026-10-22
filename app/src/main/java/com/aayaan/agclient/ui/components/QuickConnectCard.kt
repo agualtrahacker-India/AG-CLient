@@ -118,9 +118,9 @@ fun QuickConnectCard(
                 }
             }
 
-            val primaryIp = wifiIp ?: "127.0.0.1"
+            val loopbackIp = "127.0.0.1"
 
-            // IP & Port Details Box
+            // IP & Port Details Box (Highlighting 127.0.0.1 permanent static loopback)
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkBackground),
                 shape = RoundedCornerShape(10.dp),
@@ -134,17 +134,33 @@ fun QuickConnectCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Server Address (Same Phone)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextSecondary
+                                )
+                                Text(
+                                    text = "🔒 Never Changes",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = AccentGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Text(
-                                text = if (wifiIp != null) "Server Address (Device IP)" else "Server Address (Local)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary
-                            )
-                            Text(
-                                text = primaryIp,
+                                text = loopbackIp,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonCyan
+                            )
+                            Text(
+                                text = "Works permanently on Wi-Fi, 4G/5G data & offline",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
                             )
                         }
 
@@ -171,21 +187,22 @@ fun QuickConnectCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Loopback fallback:",
+                                text = "LAN Wi-Fi IP (for other phones):",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = "127.0.0.1",
+                                text = wifiIp ?: "",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
                             )
                         }
                     }
                 }
             }
 
-            // Quick Action Buttons (Copy IP & Launch Minecraft)
+            // Quick Action Buttons (Copy IP & Copy Port)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -193,9 +210,9 @@ fun QuickConnectCard(
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Server IP", primaryIp)
+                        val clip = ClipData.newPlainText("Server IP", loopbackIp)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied IP: $primaryIp", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Copied IP: $loopbackIp", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
@@ -209,29 +226,52 @@ fun QuickConnectCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Copy IP", color = NeonCyan)
+                    Text(text = "Copy 127.0.0.1", color = NeonCyan)
                 }
 
                 Button(
                     onClick = {
-                        launchMinecraft(context)
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Server Port", "$localPort")
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Copied Port: $localPort", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.weight(1.2f),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(AccentAmber)),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Launch Minecraft",
-                        tint = DarkBackground,
-                        modifier = Modifier.size(18.dp)
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy Port",
+                        tint = AccentAmber,
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Launch Minecraft", color = DarkBackground, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Copy Port", color = AccentAmber)
                 }
             }
 
-            // Step-by-Step Instructions
+            // Launch Minecraft full width button
+            Button(
+                onClick = {
+                    launchMinecraft(context)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Launch Minecraft",
+                    tint = DarkBackground,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "Launch Minecraft", color = DarkBackground, fontWeight = FontWeight.Bold)
+            }
+
+            // Step-by-Step Instructions for New 1.21+ Ore UI & Classic UI
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Method 1: Add Server (1-time setup)
                 Card(
@@ -243,24 +283,25 @@ fun QuickConnectCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "📌 Method 1: Add Server in Minecraft (One-time Setup)",
+                            text = "📌 Method 1: Add Server in Minecraft (One-Time Permanent Setup)",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
-                            text = "1. Start proxy above.\n" +
-                                    "2. Tap 'Copy IP' & 'Launch Minecraft'.\n" +
-                                    "3. In Minecraft: Play ➡️ Servers tab ➡️ Scroll down & tap Add Server.\n" +
-                                    "4. Enter Name: AG Client | Server Address: $primaryIp | Port: $localPort.\n" +
-                                    "5. Tap Save & Join! (Saved in your server list forever).",
+                            text = "1. Start proxy above and tap 'Copy 127.0.0.1'.\n" +
+                                    "2. In Minecraft: Tap Play.\n" +
+                                    "3. In New 1.21+ UI: Tap Servers icon (stacked cubes 🖥️ on left sidebar) ➡️ Scroll to bottom & tap 'Add Server'.\n" +
+                                    "   (In Classic UI: Tap 'Servers' tab at the top ➡️ Add Server).\n" +
+                                    "4. Name: AG Client | Server Address: 127.0.0.1 | Port: $localPort.\n" +
+                                    "5. Tap Save & Join! (Since 127.0.0.1 is permanent, you never have to re-enter it!).",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
                     }
                 }
 
-                // Method 2: Friends Tab LAN Games
+                // Method 2: Friends / LAN Games
                 Card(
                     colors = CardDefaults.cardColors(containerColor = DarkCard),
                     modifier = Modifier.fillMaxWidth()
@@ -280,15 +321,17 @@ fun QuickConnectCard(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "⚡ Method 2: Friends Tab (LAN Game Discovery)",
+                                text = "⚡ Method 2: Friends & LAN Games (Zero Typing)",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
                         }
                         Text(
-                            text = "• Open Minecraft ➡️ Tap Friends tab ➡️ Scroll down to LAN Games.\n" +
-                                    "• Tap 'AG Client v2.0' to join instantly with zero typing!",
+                            text = "• Open Minecraft ➡️ Tap Play.\n" +
+                                    "• In New 1.21+ UI: Tap Friends icon (two player silhouettes 👥 on left sidebar) ➡️ Scroll to LAN Games.\n" +
+                                    "  (In Classic UI: Tap 'Friends' tab at top ➡️ LAN Games).\n" +
+                                    "• Tap 'AG Client v2.1' to connect instantly without typing any IP!",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

@@ -1,5 +1,8 @@
 package com.aayaan.agclient.modules
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.aayaan.agclient.proxy.ProxySession
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -10,8 +13,7 @@ abstract class Module(
     val category: ModuleCategory,
     val description: String
 ) {
-    var isEnabled: Boolean = false
-        private set
+    var isEnabled: Boolean by mutableStateOf(false)
 
     val properties: MutableList<ModuleProperty<*>> = mutableListOf()
 

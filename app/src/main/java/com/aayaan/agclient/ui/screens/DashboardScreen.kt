@@ -50,7 +50,12 @@ fun DashboardScreen(
         QuickConnectCard(
             targetServer = config.targetIp,
             targetPort = config.targetPort,
-            localPort = config.localBindPort
+            localPort = config.localBindPort,
+            onSelectTarget = { ip, port ->
+                config.targetIp = ip
+                config.targetPort = port
+                onConfigChanged(config)
+            }
         )
 
         UpdateCard(

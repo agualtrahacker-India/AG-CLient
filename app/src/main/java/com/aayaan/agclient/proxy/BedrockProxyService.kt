@@ -99,7 +99,8 @@ class BedrockProxyService : Service() {
                 val group = NioEventLoopGroup(2)
                 eventLoopGroup = group
 
-                // Configure LAN Discovery Pong
+                // Configure RakNet Server Pong
+                val defaultCodec = BedrockCodecFinder.getDefaultCodec()
                 val targetSubMotd = if (config.targetIp.isNotBlank()) "§aTarget: ${config.targetIp}:${config.targetPort}" else "§eSet Target in AG App"
                 val pong = BedrockPong().apply {
                     edition("MCPE")
@@ -111,8 +112,8 @@ class BedrockProxyService : Service() {
                     nintendoLimited(false)
                     ipv4Port(config.localBindPort)
                     ipv6Port(config.localBindPort)
-                    version("1.21.20")
-                    protocolVersion(712)
+                    version(defaultCodec?.minecraftVersion ?: "1.21.20")
+                    protocolVersion(defaultCodec?.protocolVersion ?: 712)
                 }
 
                 val bootstrap = ServerBootstrap()
@@ -151,8 +152,7 @@ class BedrockProxyService : Service() {
                 _serviceState.value = ServiceState.RUNNING
                 Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:${config.localBindPort}")
 
-                updateNotification("Proxy Active on port ${config.localBindPort} - LAN Broadcast On")
-                startLanBroadcaster()
+                updateNotification("Proxy Active on port ${config.localBindPort}")
 
             } catch (t: Throwable) {
                 Logger.e("ProxyService", "Failed to start Bedrock proxy", t)

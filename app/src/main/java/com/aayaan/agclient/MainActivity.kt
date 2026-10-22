@@ -194,6 +194,9 @@ class MainActivity : ComponentActivity() {
 
     private fun startVirtualSandbox() {
         try {
+            if (BedrockProxyService.serviceState.value != ServiceState.RUNNING) {
+                startProxyService()
+            }
             val intent = Intent(this, AGVirtualSandboxService::class.java).apply {
                 action = AGVirtualSandboxService.ACTION_START
             }

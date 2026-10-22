@@ -101,7 +101,7 @@ fun ServiceControlCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "✓ Listening on 127.0.0.1:$localPort\n✓ LAN Pong active: Appears in Minecraft under 'Friends' -> 'LAN Worlds'",
+                        text = "✓ Local Proxy active on port $localPort\n✓ In Minecraft: Go to Servers ➡️ Add Server (Address: 127.0.0.1 or 10.0.0.1 with Sandbox)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AccentGreen,
                         modifier = Modifier.padding(10.dp)
@@ -136,7 +136,7 @@ fun ServiceControlCard(
                         )
                     }
                     Text(
-                        text = if (isSandboxRunning) "Active (10.0.0.2 Sandbox)" else "Offline (Tap Start to Auto-Route)",
+                        text = if (isSandboxRunning) "Active (Sandbox IP: 10.0.0.1)" else "Offline (Tap Start to Run Sandbox)",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (isSandboxRunning) AccentGreen else TextSecondary
                     )
@@ -168,15 +168,16 @@ fun ServiceControlCard(
                 ) {
                     if (isSandboxRunning) {
                         Text(
-                            text = "✓ Virtual Network: 10.0.0.2 (Sandbox Active)\n" +
-                                   "✓ Auto-routes Minecraft packets internally to port $localPort\n" +
-                                   "✓ Bypasses SIM Net/cellular carrier timeouts & Wi-Fi requirement",
+                            text = "✓ Virtual Sandbox Active (IP: 10.0.0.1)\n" +
+                                   "✓ Minecraft Server Address: 10.0.0.1 | Port: $localPort\n" +
+                                   "✓ Normal Internet & Xbox Live Login stay 100% active!\n" +
+                                   "✓ Completely bypasses cellular carrier blocks & connection timeouts",
                             style = MaterialTheme.typography.bodySmall,
                             color = AccentGreen
                         )
                     } else {
                         Text(
-                            text = "💡 Virtual Sandbox creates an internal isolated network on your phone. Enables seamless routing for Minecraft on mobile data (SIM Net) and Wi-Fi without connection timeouts.",
+                            text = "💡 Virtual Sandbox creates a 100% local virtual adapter (10.0.0.1) on your phone. Allows Minecraft to connect without cellular carrier blocks while keeping Xbox Live & normal internet 100% working.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

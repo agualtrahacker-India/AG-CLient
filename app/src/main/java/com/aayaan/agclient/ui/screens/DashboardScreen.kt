@@ -55,7 +55,8 @@ fun DashboardScreen(
         QuickConnectCard(
             targetServer = config.targetIp,
             targetPort = config.targetPort,
-            localPort = config.localBindPort
+            localPort = config.localBindPort,
+            isSandboxRunning = isSandboxRunning
         )
 
         UpdateCard(

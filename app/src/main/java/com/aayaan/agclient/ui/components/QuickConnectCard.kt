@@ -35,11 +35,13 @@ fun QuickConnectCard(
     targetServer: String = "",
     targetPort: Int = 19132,
     localPort: Int = 19133,
+    isSandboxRunning: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var networkType by remember { mutableStateOf(NetworkType.LOOPBACK_ONLY) }
     var detectedIp by remember { mutableStateOf("127.0.0.1") }
+    val currentIp = if (isSandboxRunning) "10.0.0.1" else detectedIp
 
     fun refreshNetworkState() {
         try {
@@ -176,32 +178,36 @@ fun QuickConnectCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = when (networkType) {
-                                    NetworkType.WIFI -> "Server Address (Wi-Fi LAN IP)"
-                                    NetworkType.CELLULAR -> "Server Address (Mobile Data / SIM Net)"
-                                    NetworkType.LOOPBACK_ONLY -> "Server Address (Local Loopback)"
+                                text = if (isSandboxRunning) {
+                                    "Server Address (Virtual Sandbox IP)"
+                                } else {
+                                    when (networkType) {
+                                        NetworkType.WIFI -> "Server Address (Wi-Fi LAN IP)"
+                                        NetworkType.CELLULAR -> "Server Address (Mobile Data / SIM Net)"
+                                        NetworkType.LOOPBACK_ONLY -> "Server Address (Local Loopback)"
+                                    }
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
-                                text = detectedIp,
+                                text = currentIp,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = NeonCyan
+                                color = if (isSandboxRunning) ElectricPurple else NeonCyan
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = when (networkType) {
+                                    imageVector = if (isSandboxRunning) Icons.Default.Shield else when (networkType) {
                                         NetworkType.WIFI -> Icons.Default.Wifi
                                         NetworkType.CELLULAR -> Icons.Default.SignalCellularAlt
                                         NetworkType.LOOPBACK_ONLY -> Icons.Default.PhoneAndroid
                                     },
                                     contentDescription = null,
-                                    tint = when (networkType) {
+                                    tint = if (isSandboxRunning) ElectricPurple else when (networkType) {
                                         NetworkType.WIFI -> AccentGreen
                                         NetworkType.CELLULAR -> NeonCyan
                                         NetworkType.LOOPBACK_ONLY -> TextSecondary
@@ -209,14 +215,18 @@ fun QuickConnectCard(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = when (networkType) {
-                                        NetworkType.WIFI -> "Active: Wi-Fi Network"
-                                        NetworkType.CELLULAR -> "Active: Mobile Data (SIM Net)"
-                                        NetworkType.LOOPBACK_ONLY -> "Active: Local Device Only"
+                                    text = if (isSandboxRunning) {
+                                        "Active: Virtual Sandbox Router"
+                                    } else {
+                                        when (networkType) {
+                                            NetworkType.WIFI -> "Active: Wi-Fi Network"
+                                            NetworkType.CELLULAR -> "Active: Mobile Data (SIM Net)"
+                                            NetworkType.LOOPBACK_ONLY -> "Active: Local Device Only"
+                                        }
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = when (networkType) {
+                                    color = if (isSandboxRunning) ElectricPurple else when (networkType) {
                                         NetworkType.WIFI -> AccentGreen
                                         NetworkType.CELLULAR -> NeonCyan
                                         NetworkType.LOOPBACK_ONLY -> TextSecondary
@@ -274,23 +284,23 @@ fun QuickConnectCard(
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Server Address", detectedIp)
+                        val clip = ClipData.newPlainText("Server Address", currentIp)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied IP: $detectedIp", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Copied IP: $currentIp", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = DarkCard),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(NeonCyan)),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(if (isSandboxRunning) ElectricPurple else NeonCyan)),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
                         contentDescription = "Copy Address",
-                        tint = NeonCyan,
+                        tint = if (isSandboxRunning) ElectricPurple else NeonCyan,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Copy $detectedIp", color = NeonCyan)
+                    Text(text = "Copy $currentIp", color = if (isSandboxRunning) ElectricPurple else NeonCyan)
                 }
 
                 Button(

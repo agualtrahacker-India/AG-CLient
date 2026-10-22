@@ -97,7 +97,7 @@ class AGVirtualSandboxService : VpnService() {
                 val builder = Builder()
                     .setSession("AG Client Virtual Sandbox")
                     .addAddress("10.0.0.2", 24)
-                    .addDnsServer("8.8.8.8")
+                    .addRoute("10.0.0.0", 24)
                     .setMtu(1400)
 
                 // Route only Minecraft packages through sandbox
@@ -108,22 +108,10 @@ class AGVirtualSandboxService : VpnService() {
                     "com.microsoft.minecraft"
                 )
 
-                var appAllowed = false
                 for (pkg in mcPackages) {
                     try {
                         builder.addAllowedApplication(pkg)
-                        appAllowed = true
                         Logger.d("VirtualSandbox", "Added $pkg to sandbox routing filter.")
-                    } catch (_: Exception) {}
-                }
-
-                // Internal sandbox subnet
-                builder.addRoute("10.0.0.0", 24)
-
-                // If Minecraft package was specifically isolated, intercept its traffic
-                if (appAllowed) {
-                    try {
-                        builder.addRoute("0.0.0.0", 0)
                     } catch (_: Exception) {}
                 }
 

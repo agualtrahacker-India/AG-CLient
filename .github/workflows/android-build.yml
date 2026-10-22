@@ -59,25 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.3.0-release
+          name: AG-Client-v2.4.0-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.3.0
-          name: "AG Client v2.3.0 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.4.0
+          name: "AG Client v2.4.0 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.3.0)
+            ### AG Client (v2.4.0)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.3.0:
-            - **No Default or Hardcoded Servers:** Completely removed all preset/featured server chips and hardcoded IPs. The user has full control to enter any destination server. Only servers the user actually joins are saved in history.
-            - **Eliminated Connection Timed Out Root Cause:** Added explicit Netty connection timeout handling, direct disconnection errors on remote failure (no more 30-second silent hangs), and live Wi-Fi IP auto-detection with 1-tap refresh.
-            - **Clean One-Method Connection:** Fast, direct "Add Server" in Minecraft using the phone's live IP and default port 19133.
-            - **Keyed Compose Modules & Instant Persistence:** Prevents toggle crosstalk (e.g. Fly vs KillAura) and state resets when changing tabs.
-            - **Duplicate App Cleanup:** Auto-detects legacy installations (`com.aayaan.agclient.debug`) and provides a 1-tap uninstaller.
+            #### What's New in v2.4.0:
+            - **Intelligent Network Detection (SIM Net vs Wi-Fi):** Fixed bug where cellular connections were mislabeled as Wi-Fi. Accurately identifies Cellular Data vs Wi-Fi LAN using Android's `ConnectivityManager`.
+            - **SIM Net / Mobile Data Support:** Detects cellular data and guides connection via `127.0.0.1:19133`, avoiding carrier CGNAT self-loopback drops, with 1-tap copy and in-game "Use Cellular Data" requirement guide.
+            - **Zero Default/Hardcoded Servers:** No preset or featured server chips. The user has 100% control over target IPs. Server history only records servers the user actually joins.
+            - **No More 30-Second Silent Hangs:** Instant Netty timeout handling and immediate descriptive disconnect messages if target server is unreachable or offline.
+            - **Keyed Compose Modules & Instant Disk Persistence:** Zero toggle crosstalk (e.g. Fly vs KillAura) and state resets when changing tabs.
+            - **Duplicate App Cleanup:** Auto-detects legacy installations (`com.aayaan.agclient.debug`) with a 1-tap uninstaller.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

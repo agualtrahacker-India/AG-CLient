@@ -20,16 +20,30 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = file("keystore/agclient-release.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "agclient2026"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "agclient"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "agclient2026"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+            // Sign debug with the exact same release key so local/debug and release APKs share the developer signature
+            signingConfig = signingConfigs.getByName("release")
             isDebuggable = true
         }
     }

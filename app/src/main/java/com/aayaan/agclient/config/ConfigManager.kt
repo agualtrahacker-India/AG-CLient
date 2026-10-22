@@ -38,8 +38,17 @@ class ConfigManager(private val context: Context) {
             val file = File(configDir, "$name.json")
             if (file.exists()) {
                 val json = file.readText()
-                currentConfig = gson.fromJson(json, ProxyConfig::class.java)
-                Logger.i("ConfigManager", "Loaded configuration from ${file.name}")
+                val loaded = gson.fromJson(json, ProxyConfig::class.java)
+                if (loaded != null) {
+                    currentConfig = loaded.copy(
+                        serverHistory = loaded.serverHistory ?: mutableListOf(),
+                        moduleStates = loaded.moduleStates ?: mutableMapOf(),
+                        moduleProperties = loaded.moduleProperties ?: mutableMapOf()
+                    )
+                } else {
+                    currentConfig = ProxyConfig()
+                }
+                Logger.i("ConfigManager", "Loaded configuration from ${file.name} (${currentConfig.serverHistory.size} servers in history)")
                 true
             } else {
                 currentConfig = ProxyConfig()

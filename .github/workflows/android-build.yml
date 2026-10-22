@@ -39,9 +39,9 @@ jobs:
           fi
           chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build Signed Release APK
         run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-build.log
+          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-build.log
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
             echo "::error::Gradle build failed. Showing error details:"
             grep -E "e: |FAILURE:|Caused by:|Compilation error|unresolved reference" -C 3 gradle-build.log || tail -n 120 gradle-build.log
@@ -59,32 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-Beta-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: AG-Client-v2.0-beta-release
+          path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0-beta
-          name: "AG Client Beta - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.0-beta
+          name: "AG Client v2.0-beta - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (Beta v1.0.0)
+            ### AG Client (v2.0-beta)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### Core Features:
-            - **Dual Command Engine:** Run commands and open GUI using either `/` (slash) or `.` (dot) commands (`/gui`, `.gui`, `/killaura`, `.fly`, etc.) with zero public server leakage.
-            - **Local RakNet Listener:** Runs on `127.0.0.1:19132` with auto LAN BedrockPong broadcasting.
-            - **Microsoft OAuth 2.0 Auth:** Device Code flow token chain integration & Xbox Live authentication.
-            - **In-Game Modal Form GUI:** Native Bedrock UI menu (`/gui`, `/menu`, `.gui`).
-            - **5 Module Categories & 28+ Modules:**
-              - *Combat:* KillAura, Reach, Hitbox, AutoClicker, TriggerBot, TpAura, AutoCrystal, AnchorAura, AutoTotem, Knockback, Backtrack, ShieldDisabler, MaceSwap
-              - *Movement:* Fly, Speed, Phase, Jetpack, BoatFly, NoSlow, Step, WaterWalk, AirJump
-              - *Visual:* Xray, PlayerESP, ItemESP, Tracers, Freecam, ChunkFinder, HoleESP, NoInvisible
-              - *World:* Scaffold, Nuke/AutoDig, AutoMine, AutoToolSwap, FastInteract
-              - *Utility:* Gui, Config, Ghost Mode
-            - **Jetpack Compose Native UI:** Material 3 dark cybernetic dashboard with live packet log console.
-            - **In-App GitHub Auto-Updater:** Checks and installs new releases directly on Android.
-          files: app/build/outputs/apk/debug/*.apk
+            #### v2.0-beta Highlights:
+            - **Port 19133 Default:** Binds to UDP port `19133` avoiding Android Minecraft 19132 LAN conflicts.
+            - **Consistent Developer Signature:** All APKs are consistently signed with the permanent release keystore for seamless in-app auto-updating without signature conflicts.
+            - **Persistent Server History:** All joined servers are automatically remembered and preserved across app updates with 1-tap switching.
+            - **Live Server Reachability Checker:** Ping and verify target Bedrock servers in real-time before joining.
+            - **Background Persistence:** High-performance `WifiLock`, `WakeLock`, and ongoing notification prevent Android OS termination.
+            - **Full 70 Modules & Commands Suite:** Complete coverage of all Combat, Movement, Visual, World, and Core utility modules.
+          files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

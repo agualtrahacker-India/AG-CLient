@@ -38,7 +38,11 @@ class AutoUpdater(private val context: Context) {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
-    val currentVersion = "1.0.0-beta"
+    val currentVersion: String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.0-beta"
+    } catch (_: Exception) {
+        "2.0-beta"
+    }
 
     companion object {
         const val REPO_OWNER = "agualtrahacker-India"
@@ -192,18 +196,43 @@ class AutoUpdater(private val context: Context) {
         }
     }
 
-    private fun isNewerVersion(remote: String, local: String): Boolean {
-        // Simple semantic version comparator
-        val rParts = remote.split("-")[0].split(".").mapNotNull { it.toIntOrNull() }
-        val lParts = local.split("-")[0].split(".").mapNotNull { it.toIntOrNull() }
+    fun isNewerVersion(remoteVersion: String, localVersion: String): Boolean {
+        val cleanRemote = remoteVersion.trim().removePrefix("v").removePrefix("V")
+        val cleanLocal = localVersion.trim().removePrefix("v").removePrefix("V")
 
-        val maxLen = maxOf(rParts.size, lParts.size)
+        if (cleanRemote.equals(cleanLocal, ignoreCase = true)) return false
+
+        // Extract numeric segments (e.g. [2, 0, 1] from "2.0.1" or "2.0.1-beta")
+        val rMajorMinor = cleanRemote.substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
+        val lMajorMinor = cleanLocal.substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
+
+        val maxLen = maxOf(rMajorMinor.size, lMajorMinor.size)
         for (i in 0 until maxLen) {
-            val r = rParts.getOrElse(i) { 0 }
-            val l = lParts.getOrElse(i) { 0 }
+            val r = rMajorMinor.getOrElse(i) { 0 }
+            val l = lMajorMinor.getOrElse(i) { 0 }
             if (r > l) return true
             if (r < l) return false
         }
+
+        // If numeric components are identical (e.g. "2.0" vs "2.0-beta"):
+        // A release without a hyphen suffix is newer than a pre-release version
+        val rHasPreRelease = cleanRemote.contains("-")
+        val lHasPreRelease = cleanLocal.contains("-")
+
+        if (!rHasPreRelease && lHasPreRelease) {
+            return true // e.g. "2.0" is newer than "2.0-beta"
+        }
+        if (rHasPreRelease && !lHasPreRelease) {
+            return false // e.g. "2.0-beta" is not newer than "2.0"
+        }
+
+        // If both have pre-releases (e.g. "2.0-beta.2" vs "2.0-beta.1"):
+        if (rHasPreRelease && lHasPreRelease) {
+            val rPre = cleanRemote.substringAfter("-")
+            val lPre = cleanLocal.substringAfter("-")
+            return rPre.compareTo(lPre, ignoreCase = true) > 0
+        }
+
         return false
     }
 }

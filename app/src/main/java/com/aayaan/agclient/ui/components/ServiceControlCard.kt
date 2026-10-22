@@ -5,10 +5,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aayaan.agclient.proxy.ServiceState
 import com.aayaan.agclient.ui.theme.*
@@ -18,6 +21,9 @@ fun ServiceControlCard(
     serviceState: ServiceState,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
+    isSandboxRunning: Boolean = false,
+    onToggleSandbox: () -> Unit = {},
+    localPort: Int = 19133,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -29,15 +35,16 @@ fun ServiceControlCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // 1. Bedrock Proxy Foreground Service
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = "Proxy Foreground Service", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Proxy Service", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -82,7 +89,8 @@ fun ServiceControlCard(
                 ) {
                     Text(
                         text = if (serviceState == ServiceState.RUNNING) "STOP PROXY" else "START PROXY",
-                        color = if (serviceState == ServiceState.RUNNING) TextPrimary else DarkBackground
+                        color = if (serviceState == ServiceState.RUNNING) TextPrimary else DarkBackground,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -93,11 +101,86 @@ fun ServiceControlCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "✓ Listening on 127.0.0.1:19132\n✓ LAN Pong active: Appears in Minecraft under 'Friends' -> 'LAN Worlds'",
+                        text = "✓ Listening on 127.0.0.1:$localPort\n✓ LAN Pong active: Appears in Minecraft under 'Friends' -> 'LAN Worlds'",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AccentGreen,
                         modifier = Modifier.padding(10.dp)
                     )
+                }
+            }
+
+            HorizontalDivider(color = DarkCardBorder)
+
+            // 2. Virtual Sandbox Mode (Auto-Router)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (isSandboxRunning) ElectricPurple else TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Virtual Sandbox Router",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSandboxRunning) ElectricPurple else TextPrimary
+                        )
+                    }
+                    Text(
+                        text = if (isSandboxRunning) "Active (10.0.0.2 Sandbox)" else "Offline (Tap Start to Auto-Route)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSandboxRunning) AccentGreen else TextSecondary
+                    )
+                }
+
+                Button(
+                    onClick = onToggleSandbox,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSandboxRunning) AccentRed else ElectricPurple
+                    )
+                ) {
+                    Text(
+                        text = if (isSandboxRunning) "STOP SANDBOX" else "START SANDBOX",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Sandbox info status banner
+            Surface(
+                color = if (isSandboxRunning) ElectricPurple.copy(alpha = 0.12f) else DarkCard,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (isSandboxRunning) {
+                        Text(
+                            text = "✓ Virtual Network: 10.0.0.2 (Sandbox Active)\n" +
+                                   "✓ Auto-routes Minecraft packets internally to port $localPort\n" +
+                                   "✓ Bypasses SIM Net/cellular carrier timeouts & Wi-Fi requirement",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AccentGreen
+                        )
+                    } else {
+                        Text(
+                            text = "💡 Virtual Sandbox creates an internal isolated network on your phone. Enables seamless routing for Minecraft on mobile data (SIM Net) and Wi-Fi without connection timeouts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
                 }
             }
         }

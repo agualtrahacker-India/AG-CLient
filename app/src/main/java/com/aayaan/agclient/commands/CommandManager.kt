@@ -103,11 +103,15 @@ class CommandManager(
             override val aliases = listOf("cmds", "commands")
 
             override fun execute(args: List<String>, session: ProxySession) {
-                session.sendChatToClient("§b--- AG Client v2.4 Commands (70) ---")
-                session.sendChatToClient("§eCore:§7 .help, .menu, .bind, .config, .disableall, .ghost, .relog, .panic, .coords")
-                session.sendChatToClient("§eCombat:§7 /reach, /killaura, /tpaura, /hitbox, /knockback, /knockbackdelay, /backtrack, /triggerbot, /autoclicker, /afkclicker, /doubleclick, /autototem, /autopotion, /autocrystal, /anticrystal, /autocart, /autoweb, /autojumpreset, /autocrit, /autoswitch, /maceswap, /macedmg, /shielddisabler, /aimassist, /autolog, /anchoraura, /multiaura, /infiniteaura, /projectileaimbot")
-                session.sendChatToClient("§eMovement:§7 /fly, /boatfly, /speed, /noslow, /airjump, /phase, /jetpack, /jumpboost, /levitate, /slowfalling, /taptp, /motionfly, /autorocket, /autoelytra, /bunnyhop, /step, /waterwalk, /glide")
-                session.sendChatToClient("§eVisual & World:§7 /freelook, /freecam, /arraylist, /armorhud, /inventoryhud, /targethud, /xray, /tracers, /blocktracers, /holeesp, /schematic, /chunkfinder, /suschunkfinder, /waypoints, /scaffold, /nuke, /automine, /autotoolswap, /fastinteract")
+                session.sendChatToClient("§8§m----------------------------------------")
+                session.sendChatToClient("§b§lAG Client §f[v2.4.0] §7- §a§lMade by Aayaan Ghosh")
+                session.sendChatToClient("§eAvailable Commands List:")
+                session.sendChatToClient("§6• Core: §f.help, .menu, .bind, .config, .disableall, .ghost, .relog, .panic, .coords")
+                session.sendChatToClient("§c• Combat: §f.reach, .killaura, .tpaura, .hitbox, .knockback, .knockbackdelay, .backtrack, .triggerbot, .autoclicker, .afkclicker, .doubleclick, .autototem, .autopotion, .autocrystal, .anticrystal, .autocart, .autoweb, .autojumpreset, .autocrit, .autoswitch, .maceswap, .macedmg, .shielddisabler, .aimassist, .autolog, .anchoraura, .multiaura, .infiniteaura, .projectileaimbot")
+                session.sendChatToClient("§a• Movement: §f.fly, .boatfly, .speed, .noslow, .airjump, .phase, .jetpack, .jumpboost, .levitate, .slowfalling, .taptp, .motionfly, .autorocket, .autoelytra, .bunnyhop, .step, .waterwalk, .glide")
+                session.sendChatToClient("§d• Visual & World: §f.freelook, .freecam, .arraylist, .armorhud, .inventoryhud, .targethud, .xray, .tracers, .blocktracers, .holeesp, .schematic, .chunkfinder, .suschunkfinder, .waypoints, .scaffold, .nuke, .automine, .autotoolswap, .fastinteract")
+                session.sendChatToClient("§7§oRun any command using '.' or '/' in chat (e.g. .fly or /killaura)")
+                session.sendChatToClient("§8§m----------------------------------------")
             }
         }
         registerCommand(helpCommand)

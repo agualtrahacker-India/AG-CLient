@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import android.widget.Toast
 import com.aayaan.agclient.utils.Logger
+import com.aayaan.agclient.proxy.AGVirtualSandboxService
 import com.aayaan.agclient.proxy.BedrockProxyService
 import com.aayaan.agclient.proxy.ServiceState
 import com.aayaan.agclient.ui.screens.*
@@ -37,6 +38,15 @@ class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
+
+    private val vpnPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                startVirtualSandbox()
+            } else {
+                Toast.makeText(this, "Virtual Sandbox requires VPN permission to auto-route Minecraft.", Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +66,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             AGClientTheme {
                 val serviceState by BedrockProxyService.serviceState.collectAsState()
+                val isSandboxRunning by AGVirtualSandboxService.isSandboxRunning.collectAsState()
                 var currentTab by remember { mutableStateOf(AppTab.DASHBOARD) }
                 var config by remember { mutableStateOf(app.configManager.currentConfig) }
 
@@ -121,6 +132,8 @@ class MainActivity : ComponentActivity() {
                                 serviceState = serviceState,
                                 onStartService = { startProxyService() },
                                 onStopService = { stopProxyService() },
+                                isSandboxRunning = isSandboxRunning,
+                                onToggleSandbox = { toggleVirtualSandbox() },
                                 authManager = app.xboxAuthManager,
                                 autoUpdater = app.autoUpdater
                             )
@@ -163,6 +176,42 @@ class MainActivity : ComponentActivity() {
             startService(intent)
         } catch (t: Throwable) {
             Logger.e("MainActivity", "Failed to stop proxy service", t)
+        }
+    }
+
+    private fun toggleVirtualSandbox() {
+        if (AGVirtualSandboxService.isSandboxRunning.value) {
+            stopVirtualSandbox()
+        } else {
+            val prepareIntent = AGVirtualSandboxService.getPrepareIntent(this)
+            if (prepareIntent != null) {
+                vpnPermissionLauncher.launch(prepareIntent)
+            } else {
+                startVirtualSandbox()
+            }
+        }
+    }
+
+    private fun startVirtualSandbox() {
+        try {
+            val intent = Intent(this, AGVirtualSandboxService::class.java).apply {
+                action = AGVirtualSandboxService.ACTION_START
+            }
+            ContextCompat.startForegroundService(this, intent)
+        } catch (t: Throwable) {
+            Logger.e("MainActivity", "Failed to start Virtual Sandbox", t)
+            Toast.makeText(this, "Failed to start sandbox: ${t.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun stopVirtualSandbox() {
+        try {
+            val intent = Intent(this, AGVirtualSandboxService::class.java).apply {
+                action = AGVirtualSandboxService.ACTION_STOP
+            }
+            startService(intent)
+        } catch (t: Throwable) {
+            Logger.e("MainActivity", "Failed to stop Virtual Sandbox", t)
         }
     }
 }

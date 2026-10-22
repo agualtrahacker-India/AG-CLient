@@ -253,8 +253,35 @@ class ProxySession(
         })
     }
 
+    private var hasSentWelcomeMessage = false
+
+    private fun sendWelcomeMessage() {
+        if (config.isGhostMode) return
+        sendChatToClient("§8§m----------------------------------------")
+        sendChatToClient("§b§lAG Client §fv2.4.0 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§aConnected to server successfully!")
+        sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
+        sendChatToClient("§8§m----------------------------------------")
+    }
+
     fun handleServerPacket(packet: BedrockPacket): PacketSignal {
         Logger.packet("Server->Proxy", packet.javaClass.simpleName)
+
+        // 0. Trigger join welcome message when player spawns
+        if (packet is PlayStatusPacket && packet.status == PlayStatusPacket.Status.PLAYER_SPAWN && !hasSentWelcomeMessage) {
+            hasSentWelcomeMessage = true
+            tickExecutor.schedule({
+                sendWelcomeMessage()
+            }, 1200, TimeUnit.MILLISECONDS)
+        }
+        if (packet is StartGamePacket && !hasSentWelcomeMessage) {
+            tickExecutor.schedule({
+                if (!hasSentWelcomeMessage) {
+                    hasSentWelcomeMessage = true
+                    sendWelcomeMessage()
+                }
+            }, 2500, TimeUnit.MILLISECONDS)
+        }
 
         // 1. Update World & Entity state
         worldState.handleServerPacket(packet)

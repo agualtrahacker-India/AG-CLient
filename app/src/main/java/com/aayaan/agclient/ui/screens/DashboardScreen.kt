@@ -25,6 +25,8 @@ fun DashboardScreen(
     serviceState: ServiceState,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
+    isSandboxRunning: Boolean = false,
+    onToggleSandbox: () -> Unit = {},
     authManager: XboxAuthManager,
     autoUpdater: AutoUpdater,
     modifier: Modifier = Modifier
@@ -44,7 +46,10 @@ fun DashboardScreen(
         ServiceControlCard(
             serviceState = serviceState,
             onStartService = onStartService,
-            onStopService = onStopService
+            onStopService = onStopService,
+            isSandboxRunning = isSandboxRunning,
+            onToggleSandbox = onToggleSandbox,
+            localPort = config.localBindPort
         )
 
         QuickConnectCard(

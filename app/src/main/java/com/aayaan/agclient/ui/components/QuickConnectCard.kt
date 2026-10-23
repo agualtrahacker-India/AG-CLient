@@ -258,15 +258,20 @@ fun QuickConnectCard(
                             shape = RoundedCornerShape(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "📱 SIM Net / Mobile Data Requirement:",
+                                    text = "📱 SIM Net / Mobile Data Setup (Fixes 'InitialConnection 90'):",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = NeonCyan
                                 )
                                 Text(
-                                    text = "Minecraft blocks multiplayer on SIM data by default. Open Minecraft ➡️ Settings ➡️ General (or Profile) ➡️ Turn ON 'Use Cellular Data'.",
+                                    text = "1. In Minecraft ➡️ Settings ➡️ General (or Profile) ➡️ Turn ON 'Use Cellular Data'.\n" +
+                                           "2. In Minecraft ➡️ Servers Tab ➡️ Add Server:\n" +
+                                           "   • Server Name: AG Client\n" +
+                                           "   • Server Address: $currentIp\n" +
+                                           "   • Port: $localPort\n" +
+                                           "   (Joining via the Servers tab is required on mobile data because cellular carriers block LAN discovery).",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextPrimary
                                 )

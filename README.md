@@ -1,4 +1,4 @@
-# 🛡️ AG Client (v2.9.0-beta.1) - Standalone Minecraft Bedrock Proxy for Android
+# 🛡️ AG Client (v2.9.6) - Standalone Minecraft Bedrock Proxy for Android
 
 [![Android CI & Release](https://github.com/agualtrahacker-India/AG-CLient/actions/workflows/android-build.yml/badge.svg)](https://github.com/agualtrahacker-India/AG-CLient/actions)
 ![Version](https://img.shields.io/badge/Release-v2.9.0--beta.1-blueviolet)
@@ -15,7 +15,7 @@
 
 ---
 
-## ✨ What's New in v2.9.0-beta.1 (Connection Test)
+## ✨ What's New in v2.9.6 (Featured Server Auth & Dynamic Protocol Support)
 
 * 🔬 **Dedicated `connection-test` Branch & Beta 1 Diagnostics Build**: Isolated test environment to definitively determine whether network connection issues are within client code or Android runtime/environment.
 * 🛰️ **RakNet Packet Inspector & Live Hex Telemetry**: Real-time packet parsing (`0x05`, `0x06`, `0x07`, `0x08`, `0x09`, `0x10`, `0x13`, `0x19`, `0x1c`) for every UDP datagram passing between Minecraft, tun0, and the proxy relay.
@@ -26,7 +26,7 @@
 * 💬 **In-Game Join Welcome & Attribution**: When spawning on any server, a private message is sent to your chat:
   ```text
   ----------------------------------------
-  AG Client v2.9.0-beta.1 - Made by Aayaan Ghosh
+  AG Client v2.9.6 - Made by Aayaan Ghosh
   Connected to server successfully!
   Type .help or /help to see command lists.
   ----------------------------------------
@@ -38,7 +38,7 @@
 ## 🚀 Complete Quick Start & Connection Guide
 
 ### 1. Installation
-1. Download the latest **`AG-Client-v2.9.0-beta.1-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
+1. Download the latest **`AG-Client-v2.9.6-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
 2. Install the APK on your Android device (Play Protect verifies it is clean and safe).
 
 ---

@@ -13,6 +13,7 @@ object BedrockCodecFinder {
     private var defaultCodec: BedrockCodec? = null
 
     private val KNOWN_CODEC_CLASSES = listOf(
+        "org.cloudburstmc.protocol.bedrock.codec.v786.Bedrock_v786", // 1.21.70
         "org.cloudburstmc.protocol.bedrock.codec.v776.Bedrock_v776", // 1.21.60
         "org.cloudburstmc.protocol.bedrock.codec.v766.Bedrock_v766", // 1.21.50
         "org.cloudburstmc.protocol.bedrock.codec.v748.Bedrock_v748", // 1.21.40

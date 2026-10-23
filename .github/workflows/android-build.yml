@@ -59,23 +59,25 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.9.5-release
+          name: AG-Client-v2.9.6-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/connection-test'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.9.5
-          name: "AG Client v2.9.5 - Official Xbox Auth & Exact Skin Preservation"
+          tag_name: v2.9.6
+          name: "AG Client v2.9.6 - Dynamic Codec Discovery, Official Xbox Auth & Exact Skin Preservation"
           body: |
-            ### AG Client v2.9.5 (Featured Server Auth & Skin Preservation)
+            ### AG Client v2.9.6 (Featured Server Auth & Dynamic Protocol Support)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.9.5:
+            #### What's New in v2.9.6:
+            - **Dynamic Protocol Codec Discovery & LAN Pong:** Discovers client protocol dynamically across Bedrock v786 (1.21.70), v776 (1.21.60), v766 (1.21.50) down to v589 (1.20.0), matching the LAN advertisement and preventing InitialConnection errors.
             - **Official Microsoft & Xbox Live Auth for The Hive:** One-tap device code linking generates valid Mojang-signed certificate chains matched to proxy ECDH keys, solving the "Authentication Required" kick on featured servers.
             - **Exact Minecraft Skin & Model Preservation:** Extracts the player's custom skin, cape, 3D geometry model, and animations directly from the local Minecraft app and re-signs it for the outbound session.
             - **Account Management UI:** Added Copy Code, Copy Link, Open Link browser launcher, and Account Removal with confirmation dialog.
+            - **Cellular & SIM Net Connectivity Guidance:** Enhanced in-app detection and guidance for mobile data users to toggle Minecraft's "Use Cellular Data" setting.
             - **Netty Pipeline Exception Handling & Early Upstream Connection:** Initiates upstream connection concurrently during RequestNetworkSettingsPacket with zero-threshold compression alignment.
             - **Dual Transport Testing:** RakNet UDP + NetherNet port 7551 discovery & companion TCP listeners.
             - **Unlimited Rate-Limit Free Auto-Updater:** Bypasses GitHub API 403 limits using Fastly CDN and web redirects.

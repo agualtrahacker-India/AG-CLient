@@ -58,7 +58,7 @@ fun LegacyCleanupCard(modifier: Modifier = Modifier) {
             }
 
             Text(
-                text = "An older debug build (com.aayaan.agclient.debug) was found on your phone. Android keeps both versions as separate duplicate icons.\n\nTap below to cleanly remove the older duplicate — all your server history and settings in this new v2.9.0-beta.1 release are safe.",
+                text = "An older debug build (com.aayaan.agclient.debug) was found on your phone. Android keeps both versions as separate duplicate icons.\n\nTap below to cleanly remove the older duplicate — all your server history and settings in this new v2.9.6 release are safe.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )

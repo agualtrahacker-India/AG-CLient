@@ -22,6 +22,7 @@ object Logger {
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
     private val _logsFlow = MutableSharedFlow<LogEntry>(replay = 100, extraBufferCapacity = 200)
     val logsFlow: SharedFlow<LogEntry> = _logsFlow.asSharedFlow()
+    private val logHistory = java.util.Collections.synchronizedList(mutableListOf<LogEntry>())
 
     private fun log(level: LogLevel, tag: String, message: String) {
         val entry = LogEntry(
@@ -30,6 +31,12 @@ object Logger {
             tag = tag,
             message = message
         )
+        synchronized(logHistory) {
+            logHistory.add(entry)
+            if (logHistory.size > 500) {
+                logHistory.removeAt(0)
+            }
+        }
         _logsFlow.tryEmit(entry)
         android.util.Log.println(
             when (level) {
@@ -42,6 +49,22 @@ object Logger {
             tag,
             message
         )
+    }
+
+    fun getAllLogsText(): String {
+        return synchronized(logHistory) {
+            if (logHistory.isEmpty()) {
+                "No logs recorded yet."
+            } else {
+                logHistory.joinToString("\n") { "[${it.timestamp}] [${it.level}] [${it.tag}] ${it.message}" }
+            }
+        }
+    }
+
+    fun clearLogs() {
+        synchronized(logHistory) {
+            logHistory.clear()
+        }
     }
 
     fun d(tag: String, message: String) = log(LogLevel.DEBUG, tag, message)

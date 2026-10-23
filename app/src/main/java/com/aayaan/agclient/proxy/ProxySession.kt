@@ -56,9 +56,14 @@ class ProxySession(
     private fun setupLocalSessionHandler() {
         serverSession.setPacketHandler(object : BedrockPacketHandler {
             override fun handlePacket(packet: BedrockPacket): PacketSignal {
-                val signal = handleClientPacket(packet)
-                if (signal == PacketSignal.UNHANDLED) {
-                    clientSession?.sendPacket(packet)
+                try {
+                    val signal = handleClientPacket(packet)
+                    if (signal == PacketSignal.UNHANDLED) {
+                        clientSession?.sendPacket(packet)
+                    }
+                } catch (t: Throwable) {
+                    Logger.e("ProxySession", "Error processing client packet ${packet.javaClass.simpleName}: ${t.message}", t)
+                    try { clientSession?.sendPacket(packet) } catch (_: Exception) {}
                 }
                 return PacketSignal.HANDLED
             }
@@ -274,38 +279,43 @@ class ProxySession(
     private fun setupRemoteSessionHandler(session: BedrockClientSession) {
         session.setPacketHandler(object : BedrockPacketHandler {
             override fun handlePacket(packet: BedrockPacket): PacketSignal {
-                if (packet is NetworkSettingsPacket) {
-                    Logger.i("ProxySession", "Upstream server replied with NetworkSettingsPacket: ${packet.compressionAlgorithm}")
-                    try {
-                        session.setCompression(packet.compressionAlgorithm)
-                    } catch (e: Exception) {
-                        Logger.w("ProxySession", "Could not set upstream compression: ${e.message}")
+                try {
+                    if (packet is NetworkSettingsPacket) {
+                        Logger.i("ProxySession", "Upstream server replied with NetworkSettingsPacket: ${packet.compressionAlgorithm}")
+                        try {
+                            session.setCompression(packet.compressionAlgorithm)
+                        } catch (e: Exception) {
+                            Logger.w("ProxySession", "Could not set upstream compression: ${e.message}")
+                        }
+
+                        // Upstream is ready for authentication! Send cached LoginPacket
+                        cachedLoginPacket?.let { login ->
+                            session.sendPacketImmediately(login)
+                            Logger.i("ProxySession", "Forwarded player's LoginPacket to upstream server.")
+                        }
+                        return PacketSignal.HANDLED
                     }
 
-                    // Upstream is ready for authentication! Send cached LoginPacket
-                    cachedLoginPacket?.let { login ->
-                        session.sendPacketImmediately(login)
-                        Logger.i("ProxySession", "Forwarded player's LoginPacket to upstream server.")
+                    if (packet is ServerToClientHandshakePacket) {
+                        Logger.i("ProxySession", "Upstream server requested handshake. Forwarding to Minecraft client.")
+                        serverSession.sendPacketImmediately(packet)
+                        return PacketSignal.HANDLED
                     }
-                    return PacketSignal.HANDLED
-                }
 
-                if (packet is ServerToClientHandshakePacket) {
-                    Logger.i("ProxySession", "Upstream server requested handshake. Forwarding to Minecraft client.")
-                    serverSession.sendPacketImmediately(packet)
-                    return PacketSignal.HANDLED
-                }
+                    if (packet is DisconnectPacket) {
+                        Logger.w("ProxySession", "Upstream server disconnected session: ${packet.kickMessage}")
+                        serverSession.sendPacket(packet)
+                        cleanup()
+                        return PacketSignal.HANDLED
+                    }
 
-                if (packet is DisconnectPacket) {
-                    Logger.w("ProxySession", "Upstream server disconnected session: ${packet.kickMessage}")
-                    serverSession.sendPacket(packet)
-                    cleanup()
-                    return PacketSignal.HANDLED
-                }
-
-                val signal = handleServerPacket(packet)
-                if (signal == PacketSignal.UNHANDLED) {
-                    serverSession.sendPacket(packet)
+                    val signal = handleServerPacket(packet)
+                    if (signal == PacketSignal.UNHANDLED) {
+                        serverSession.sendPacket(packet)
+                    }
+                } catch (t: Throwable) {
+                    Logger.e("ProxySession", "Error processing server packet ${packet.javaClass.simpleName}: ${t.message}", t)
+                    try { serverSession.sendPacket(packet) } catch (_: Exception) {}
                 }
                 return PacketSignal.HANDLED
             }
@@ -317,7 +327,7 @@ class ProxySession(
     private fun sendWelcomeMessage() {
         if (config.isGhostMode) return
         sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.6.2 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§b§lAG Client §fv2.7.0 §7- §a§lMade by Aayaan Ghosh")
         sendChatToClient("§aConnected to server successfully!")
         sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
         sendChatToClient("§8§m----------------------------------------")
@@ -327,11 +337,14 @@ class ProxySession(
         Logger.packet("Server->Proxy", packet.javaClass.simpleName)
 
         // 0. Trigger join welcome message when player spawns
-        if (packet is PlayStatusPacket && packet.status == PlayStatusPacket.Status.PLAYER_SPAWN && !hasSentWelcomeMessage) {
-            hasSentWelcomeMessage = true
-            tickExecutor.schedule({
-                sendWelcomeMessage()
-            }, 1200, TimeUnit.MILLISECONDS)
+        if (packet is PlayStatusPacket) {
+            Logger.i("ProxySession", "PlayStatus from server: ${packet.status}")
+            if (packet.status == PlayStatusPacket.Status.PLAYER_SPAWN && !hasSentWelcomeMessage) {
+                hasSentWelcomeMessage = true
+                tickExecutor.schedule({
+                    sendWelcomeMessage()
+                }, 1200, TimeUnit.MILLISECONDS)
+            }
         }
         if (packet is StartGamePacket && !hasSentWelcomeMessage) {
             tickExecutor.schedule({
@@ -342,18 +355,30 @@ class ProxySession(
             }, 2500, TimeUnit.MILLISECONDS)
         }
 
-        // 1. Update World & Entity state
-        worldState.handleServerPacket(packet)
-
-        // 2. Intercept AvailableCommandsPacket to inject proxy custom commands for autocompletion
-        if (packet is AvailableCommandsPacket) {
-            commandManager.injectCustomCommands(packet)
+        try {
+            // 1. Update World & Entity state
+            worldState.handleServerPacket(packet)
+        } catch (t: Throwable) {
+            Logger.d("ProxySession", "WorldState ignore error: ${t.message}")
         }
 
-        // 3. Run through active modules
-        val moduleSignal = moduleManager.onServerPacket(packet, this)
-        if (moduleSignal == PacketSignal.HANDLED) {
-            return PacketSignal.HANDLED
+        try {
+            // 2. Intercept AvailableCommandsPacket to inject proxy custom commands for autocompletion
+            if (packet is AvailableCommandsPacket) {
+                commandManager.injectCustomCommands(packet)
+            }
+        } catch (t: Throwable) {
+            Logger.d("ProxySession", "CommandManager ignore error: ${t.message}")
+        }
+
+        try {
+            // 3. Run through active modules
+            val moduleSignal = moduleManager.onServerPacket(packet, this)
+            if (moduleSignal == PacketSignal.HANDLED) {
+                return PacketSignal.HANDLED
+            }
+        } catch (t: Throwable) {
+            Logger.d("ProxySession", "ModuleManager ignore error: ${t.message}")
         }
 
         return PacketSignal.UNHANDLED

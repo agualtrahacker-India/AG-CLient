@@ -70,7 +70,7 @@ fun UpdateCard(
                 is UpdateState.Idle -> {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Version: 2.6.2 (Active)",
+                            text = "Version: 2.7.0 (Active)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextPrimary
                         )

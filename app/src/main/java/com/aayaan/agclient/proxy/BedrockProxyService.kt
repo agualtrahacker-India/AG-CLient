@@ -91,9 +91,22 @@ class BedrockProxyService : Service() {
     private fun startProxy() {
         scope.launch {
             try {
-                _serviceState.value = ServiceState.STARTING
                 val app = application as AGClientApplication
                 val config = app.configManager.currentConfig
+
+                // Re-entrancy guard: Never bind twice if already running on the requested port
+                if (_serviceState.value == ServiceState.RUNNING && serverChannel?.isOpen == true) {
+                    Logger.i("ProxyService", "Proxy is already actively listening on 0.0.0.0:${config.localBindPort}. Duplicate bind ignored.")
+                    return@launch
+                }
+
+                _serviceState.value = ServiceState.STARTING
+
+                // Cleanly release any stale channel or event loop before re-binding
+                try {
+                    serverChannel?.close()?.syncUninterruptibly()
+                    serverChannel = null
+                } catch (_: Exception) {}
 
                 val bindAddress = InetSocketAddress("0.0.0.0", config.localBindPort)
                 val group = NioEventLoopGroup(2)
@@ -104,7 +117,7 @@ class BedrockProxyService : Service() {
                 val targetSubMotd = if (config.targetIp.isNotBlank()) "§aTarget: ${config.targetIp}:${config.targetPort}" else "§eSet Target in AG App"
                 val pong = BedrockPong().apply {
                     edition("MCPE")
-                    motd("§bAG Client v2.6.2 §7[Proxy]")
+                    motd("§bAG Client v2.7.0 §7[Proxy]")
                     subMotd(targetSubMotd)
                     playerCount(1)
                     maximumPlayerCount(10)
@@ -119,6 +132,8 @@ class BedrockProxyService : Service() {
                 val bootstrap = ServerBootstrap()
                     .channelFactory(RakChannelFactory.server(NioDatagramChannel::class.java))
                     .group(group)
+                    .option(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
+                    .childOption(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
                     .option(RakChannelOption.RAK_ADVERTISEMENT, pong.toByteBuf())
                     .option(RakChannelOption.RAK_HANDLE_PING, true)
                     .childHandler(object : BedrockServerInitializer() {
@@ -146,7 +161,13 @@ class BedrockProxyService : Service() {
                         }
                     })
 
-                val channelFuture = bootstrap.bind(bindAddress).sync()
+                val channelFuture = try {
+                    bootstrap.bind(bindAddress).sync()
+                } catch (bindEx: java.net.BindException) {
+                    Logger.w("ProxyService", "Port ${config.localBindPort} in TIME_WAIT. Retrying in 400ms with SO_REUSEADDR...")
+                    delay(400)
+                    bootstrap.bind(bindAddress).sync()
+                }
                 serverChannel = channelFuture.channel()
 
                 _serviceState.value = ServiceState.RUNNING
@@ -197,7 +218,7 @@ class BedrockProxyService : Service() {
                     val targetName = if (currentConfig.targetIp.isNotBlank()) currentConfig.targetIp else "AG Proxy"
                     val broadcastPort = currentConfig.localBindPort
                     // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
-                    val motd = "MCPE;§bAG Client v2.6.2 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
+                    val motd = "MCPE;§bAG Client v2.7.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
                     val motdBytes = motd.toByteArray(Charsets.UTF_8)
 
                     val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {
@@ -255,8 +276,12 @@ class BedrockProxyService : Service() {
                 session.close()
             }
             activeSessions.clear()
-            serverChannel?.close()
-            eventLoopGroup?.shutdownGracefully()
+            try {
+                serverChannel?.close()?.syncUninterruptibly()
+            } catch (_: Exception) {}
+            try {
+                eventLoopGroup?.shutdownGracefully()?.syncUninterruptibly()
+            } catch (_: Exception) {}
             serverChannel = null
             eventLoopGroup = null
         } catch (t: Throwable) {
@@ -357,7 +382,7 @@ class BedrockProxyService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AG Client v2.6.2 (Active Proxy)")
+            .setContentTitle("AG Client v2.7.0 (Active Proxy)")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)

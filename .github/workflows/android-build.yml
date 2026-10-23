@@ -59,24 +59,25 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.6.2-release
+          name: AG-Client-v2.7.0-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.6.2
-          name: "AG Client v2.6.2 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.7.0
+          name: "AG Client v2.7.0 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.6.2)
+            ### AG Client (v2.7.0)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.6.2:
-            - **Resolved Connection Timeout in Proxy & Sandbox:** Fixed Netty RakNet client connection race condition and extended MTU discovery timeout to 25s for stable global & mobile data connections.
-            - **Native Servers Tab Virtual Sandbox (10.0.0.1:19133):** Designed for modern Minecraft Bedrock 1.21+ New Play Screen (Ore UI) without needing the legacy Friends tab.
-            - **Automated 30-Minute Background Updates:** Replaced rate-limit-prone manual update button with periodic 30-min background auto-checks and Android system notifications when updates are found.
-            - **LAN Broadcaster Compatibility:** Active RakNet Unconnected Pong broadcaster for local network discovery.
+            #### What's New in v2.7.0:
+            - **Fixed Port BindException & Re-entrancy Guard:** Resolved `java.net.BindException: Address already in use` with `SO_REUSEADDR`, atomic duplicate bind protection, and kernel socket release on stop.
+            - **One-Tap Console Log Copying:** Added instant "Copy" button in Packet & System Console view with Android clipboard integration and clear action.
+            - **Multiplayer Handshake & Packet Pipe Resilience:** Wrapped packet processing pipeline in isolated exception guards to ensure unexpected packets never drop multiplayer sessions.
+            - **Native Servers Tab Virtual Sandbox (10.0.0.1:19133):** Built specifically for modern Minecraft Bedrock 1.21+ New Play Screen (Ore UI).
+            - **Automated 30-Minute Background Updates:** Silent background updates with rate-limit protection and system notifications.
             - **70+ In-Game Commands & Utilities:** Complete combat, movement, visual, and world utility suite.
           files: app/build/outputs/apk/release/*.apk
         env:

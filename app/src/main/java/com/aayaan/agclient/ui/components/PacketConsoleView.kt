@@ -193,7 +193,7 @@ fun PacketConsoleView(
                         "⏱️ Timed Out" to "Connection Timed Out"
                     )
 
-                    for ((label, description) to in feedbackOptions) {
+                    for ((label, description) in feedbackOptions) {
                         val isSelected = selectedFeedback == description
                         FilterChip(
                             selected = isSelected,

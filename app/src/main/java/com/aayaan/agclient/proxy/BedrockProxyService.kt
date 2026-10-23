@@ -65,6 +65,13 @@ class BedrockProxyService : Service() {
             return START_NOT_STICKY
         }
 
+        // Re-entrancy guard: if already starting or running with open channel, do not re-run startProxy()
+        if (_serviceState.value == ServiceState.STARTING || (_serviceState.value == ServiceState.RUNNING && serverChannel?.isOpen == true)) {
+            Logger.i("ProxyService", "Proxy is already starting or running. Ignoring duplicate start intent.")
+            return START_STICKY
+        }
+        _serviceState.value = ServiceState.STARTING
+
         try {
             val notification = createNotification("Starting proxy server...")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -94,13 +101,12 @@ class BedrockProxyService : Service() {
                 val app = application as AGClientApplication
                 val config = app.configManager.currentConfig
 
-                // Re-entrancy guard: Never bind twice if already running on the requested port
-                if (_serviceState.value == ServiceState.RUNNING && serverChannel?.isOpen == true) {
-                    Logger.i("ProxyService", "Proxy is already actively listening on 0.0.0.0:${config.localBindPort}. Duplicate bind ignored.")
-                    return@launch
+                // Normalize bind port: if corrupted to 19134/19135 or invalid, reset strictly to 19133
+                if (config.localBindPort == 19134 || config.localBindPort == 19135 || config.localBindPort <= 0) {
+                    config.localBindPort = 19133
+                    app.configManager.saveConfig("default")
                 }
-
-                _serviceState.value = ServiceState.STARTING
+                val bindPort = config.localBindPort
 
                 // Cleanly release any stale channel or event loop before re-binding
                 try {
@@ -123,19 +129,18 @@ class BedrockProxyService : Service() {
                     maximumPlayerCount(10)
                     gameType("Survival")
                     nintendoLimited(false)
-                    ipv4Port(config.localBindPort)
-                    ipv6Port(config.localBindPort)
+                    ipv4Port(bindPort)
+                    ipv6Port(bindPort)
                     version(defaultCodec?.minecraftVersion ?: "1.21.20")
                     protocolVersion(defaultCodec?.protocolVersion ?: 712)
                 }
 
-                // Resilient Port Binding: Try configured port first, fallback to next port if in TIME_WAIT or held
-                val candidatePorts = listOf(config.localBindPort, 19133, 19134, 19135).distinct()
+                val bindAddress = InetSocketAddress("0.0.0.0", bindPort)
                 var boundSuccess = false
 
-                for (port in candidatePorts) {
+                // Resilient binding: Retry up to 3 times on the configured port (handles rapid restart TIME_WAIT)
+                for (attempt in 1..3) {
                     try {
-                        val bindAddress = InetSocketAddress("0.0.0.0", port)
                         val group = NioEventLoopGroup(2)
                         eventLoopGroup = group
 
@@ -173,32 +178,29 @@ class BedrockProxyService : Service() {
 
                         val channelFuture = bootstrap.bind(bindAddress).sync()
                         serverChannel = channelFuture.channel()
-
-                        if (config.localBindPort != port) {
-                            config.localBindPort = port
-                            app.configManager.saveConfig("default")
-                            Logger.i("ProxyService", "Switched localBindPort to available port: $port")
-                        }
-
                         boundSuccess = true
-                        Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:$port")
+                        Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:$bindPort (attempt $attempt)")
                         break
                     } catch (bindEx: Throwable) {
-                        Logger.w("ProxyService", "Port $port unavailable (${bindEx.message}), attempting next available port...")
+                        Logger.w("ProxyService", "Port $bindPort temporarily busy (attempt $attempt/3: ${bindEx.message}), retrying...")
                         try {
                             eventLoopGroup?.shutdownGracefully(0, 200, java.util.concurrent.TimeUnit.MILLISECONDS)?.syncUninterruptibly()
                         } catch (_: Exception) {}
                         eventLoopGroup = null
-                        delay(250)
+                        if (attempt < 3) {
+                            delay(500)
+                        } else {
+                            throw bindEx
+                        }
                     }
                 }
 
                 if (!boundSuccess) {
-                    throw IllegalStateException("Failed to bind proxy on any candidate port: $candidatePorts")
+                    throw IllegalStateException("Failed to bind proxy server on port $bindPort")
                 }
 
                 _serviceState.value = ServiceState.RUNNING
-                updateNotification("Proxy Active on port ${config.localBindPort}")
+                updateNotification("Proxy Active on port $bindPort")
 
                 // Broadcast LAN discovery Pong so AG Client appears directly in Minecraft Friends tab
                 startLanBroadcaster()

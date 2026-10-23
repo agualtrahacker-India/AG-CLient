@@ -80,7 +80,7 @@ class AGVirtualSandboxService : VpnService() {
         _isSandboxRunning.value = true
 
         // Automatically ensure BedrockProxyService is running so local relay target is available
-        if (BedrockProxyService.serviceState.value != ServiceState.RUNNING) {
+        if (BedrockProxyService.serviceState.value == ServiceState.STOPPED || BedrockProxyService.serviceState.value == ServiceState.ERROR) {
             Logger.i("VirtualSandbox", "Starting BedrockProxyService to listen for sandbox relay traffic...")
             val proxyIntent = Intent(this, BedrockProxyService::class.java)
             try {
@@ -121,31 +121,11 @@ class AGVirtualSandboxService : VpnService() {
                     .setMtu(1400)
                     .allowBypass()
 
-                val mcPackages = listOf(
-                    "com.mojang.minecraftpe",
-                    "com.mojang.minecraftpe.beta",
-                    "com.mojang.minecrafttrialpe",
-                    "com.microsoft.minecraft"
-                )
-
-                var addedAny = false
-                for (pkg in mcPackages) {
-                    try {
-                        builder.addAllowedApplication(pkg)
-                        addedAny = true
-                        Logger.d("VirtualSandbox", "Added $pkg to sandbox routing filter.")
-                    } catch (_: Exception) {}
-                }
-
-                if (!addedAny) {
-                    try {
-                        builder.addDisallowedApplication(packageName)
-                        Logger.i("VirtualSandbox", "No standard Minecraft package installed yet; disallowed AG Client to route sandbox subnet.")
-                    } catch (e: Exception) {
-                        Logger.w("VirtualSandbox", "Could not disallow self package: ${e.message}")
-                    }
-                } else {
-                    Logger.i("VirtualSandbox", "Sandbox VPN configured: Minecraft traffic exclusively routed through 10.0.0.1 virtual gateway.")
+                try {
+                    builder.addDisallowedApplication(packageName)
+                    Logger.i("VirtualSandbox", "Sandbox VPN configured: AG Client disallowed, all game packages routed through 10.0.0.1.")
+                } catch (e: Exception) {
+                    Logger.w("VirtualSandbox", "Could not disallow self package: ${e.message}")
                 }
 
                 vpnInterface = builder.establish()
@@ -167,11 +147,13 @@ class AGVirtualSandboxService : VpnService() {
 
         scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(32768)
+            val currentConfigPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
+            val targetPort = if (currentConfigPort in 1024..65535 && currentConfigPort != 19134 && currentConfigPort != 19135) currentConfigPort else 19133
+            val proxyTarget = InetSocketAddress("127.0.0.1", targetPort)
+            Logger.i("VirtualSandbox", "Relay loop listening on tun0 -> target proxy 127.0.0.1:$targetPort")
 
             try {
                 while (isRunning && isActive) {
-                    val currentLocalPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
-                    val proxyTarget = InetSocketAddress("127.0.0.1", currentLocalPort)
                     val length = try {
                         inputStream.read(buffer)
                     } catch (_: Exception) {
@@ -208,9 +190,9 @@ class AGVirtualSandboxService : VpnService() {
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
                         route.socket.send(packet)
-                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$currentLocalPort")
+                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$targetPort")
                     } catch (e: Exception) {
-                        Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$currentLocalPort: ${e.message}")
+                        Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$targetPort: ${e.message}")
                     }
                 }
             } catch (e: Exception) {

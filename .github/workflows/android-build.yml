@@ -59,24 +59,25 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.8.0-release
+          name: AG-Client-v2.8.1-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.8.0
-          name: "AG Client v2.8.0 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.8.1
+          name: "AG Client v2.8.1 - Standalone Minecraft Bedrock Proxy"
           body: |
-            ### AG Client (v2.8.0)
+            ### AG Client (v2.8.1)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.8.0:
+            #### What's New in v2.8.1:
+            - **Fixed "Connecting to external server" Hang:** Restored clean sandbox VPN routing by disallowing AG Client package instead of restricting allowed packages, guaranteeing all Minecraft editions, clones, and network threads route to `10.0.0.1`.
+            - **Strict Proxy Port 19133 Pinning & Self-Healing:** Prevented silent port shifting to 19134/19135; normalized any existing configs back to 19133 with automatic 3x retry on transient TIME_WAIT.
+            - **Startup Race Condition Shielding:** Synchronous atomic guard prevents concurrent service invocations from terminating listener sockets mid-startup.
             - **MitM Packet Manager & Full Key Exchange Engine:** Full bi-directional packet interceptor with dynamic ECDH (secp384r1/secp256r1) key derivation and AES cipher activation for both Minecraft and remote servers.
             - **End-to-End Interception & Encryption Bridge:** Eliminates multiplayer connection timeouts and "Connection failed" drops by terminating encryption handshakes on both legs.
-            - **Resilient Multi-Port Proxy Listener:** Dynamic candidate port binding with re-entrancy protection and `SO_REUSEADDR` to prevent `BindException: Address already in use`.
-            - **Virtual Sandbox Per-App Routing (10.0.0.1:19133 & 19132):** Restored native Minecraft package filtering (`com.mojang.minecraftpe`, etc.) with dynamic relay port routing.
             - **One-Tap Console Log Copying & Diagnostics:** Instant log copy to clipboard directly from the console interface.
             - **70+ In-Game Commands & Utilities:** Complete combat, movement, visual, and world utility suite.
           files: app/build/outputs/apk/release/*.apk

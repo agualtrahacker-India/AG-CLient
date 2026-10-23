@@ -255,7 +255,7 @@ class ProxySession(
     private fun sendWelcomeMessage() {
         if (config.isGhostMode) return
         sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.8.0 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§b§lAG Client §fv2.8.1 §7- §a§lMade by Aayaan Ghosh")
         sendChatToClient("§aConnected to server successfully!")
         sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
         sendChatToClient("§8§m----------------------------------------")

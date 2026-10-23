@@ -76,7 +76,8 @@ fun DashboardScreen(
             currentIp = if (isSandboxRunning) "10.0.0.1" else "127.0.0.1",
             localPort = config.localBindPort,
             onLoginClick = { authManager.startDeviceCodeLogin() },
-            onLogoutClick = { authManager.logout() }
+            onLogoutClick = { authManager.logout() },
+            onCancelClick = { authManager.cancelLogin() }
         )
     }
 }

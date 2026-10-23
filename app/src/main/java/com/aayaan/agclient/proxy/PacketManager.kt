@@ -8,6 +8,7 @@ import com.aayaan.agclient.state.WorldStateTracker
 import com.aayaan.agclient.utils.Logger
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import kotlinx.coroutines.launch
 import org.cloudburstmc.protocol.bedrock.BedrockClientSession
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm
@@ -233,11 +234,21 @@ class PacketManager(
 
         // Start upstream connection early concurrently with client handshake
         proxySession.connectUpstream()
+
+        // If authenticated with Xbox Live, pre-fetch official Mojang chain in background if not already cached
+        val kPair = proxyKeyPair
+        if (kPair != null && !proxySession.authManager.liveXstsToken.isNullOrBlank() && proxySession.authManager.cachedMinecraftChain == null) {
+            val pubKeyB64 = Base64.encodeToString(kPair.public.encoded, Base64.NO_WRAP)
+            proxySession.sessionScope.launch {
+                proxySession.authManager.getOrFetchMinecraftChain(pubKeyB64)
+            }
+        }
     }
 
     private fun handleClientLoginPacket(packet: LoginPacket) {
         Logger.i("PacketManager", "Intercepted LoginPacket (Proto: ${packet.protocolVersion})")
-        proxySession.cachedLoginPacket = packet
+        val outbound = prepareOutboundLoginPacket(packet)
+        proxySession.cachedLoginPacket = outbound
 
         // Extract client's public key from the identity certificate chain
         val extractedKey = extractPublicKeyFromLoginPacket(packet)
@@ -252,7 +263,7 @@ class PacketManager(
         val upstream = proxySession.clientSession
         if (proxySession.isConnectedToUpstream && upstream != null && upstream.isConnected) {
             try {
-                upstream.sendPacketImmediately(packet)
+                upstream.sendPacketImmediately(outbound)
                 Logger.i("PacketManager", "Upstream already connected, forwarded player's LoginPacket immediately.")
             } catch (e: Exception) {
                 Logger.e("PacketManager", "Failed to forward LoginPacket to connected upstream: ${e.message}")
@@ -273,7 +284,8 @@ class PacketManager(
 
         // Forward player's cached LoginPacket to remote server
         proxySession.cachedLoginPacket?.let { login ->
-            clientSession.sendPacketImmediately(login)
+            val outbound = prepareOutboundLoginPacket(login)
+            clientSession.sendPacketImmediately(outbound)
             Logger.i("PacketManager", "Forwarded player's LoginPacket upstream.")
         }
     }
@@ -507,5 +519,127 @@ class PacketManager(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun derToJose(der: ByteArray, keySize: Int = 48): ByteArray {
+        if (der.size < 8 || der[0] != 0x30.toByte()) return der
+        var offset = 2
+        if (der[1].toInt() and 0x80 != 0) {
+            offset += (der[1].toInt() and 0x7F)
+        }
+        if (offset >= der.size || der[offset] != 0x02.toByte()) return der
+        val rLen = der[offset + 1].toInt() and 0xFF
+        val rStart = offset + 2
+        val sTypeOffset = rStart + rLen
+        if (sTypeOffset >= der.size || der[sTypeOffset] != 0x02.toByte()) return der
+        val sLen = der[sTypeOffset + 1].toInt() and 0xFF
+        val sStart = sTypeOffset + 2
+
+        val jose = ByteArray(keySize * 2)
+        val rSrc = if (rLen > keySize) rStart + (rLen - keySize) else rStart
+        val rCount = rLen.coerceAtMost(keySize)
+        val rDst = keySize - rCount
+        System.arraycopy(der, rSrc, jose, rDst, rCount)
+
+        val sSrc = if (sLen > keySize) sStart + (sLen - keySize) else sStart
+        val sCount = sLen.coerceAtMost(keySize)
+        val sDst = keySize + (keySize - sCount)
+        System.arraycopy(der, sSrc, jose, sDst, sCount)
+
+        return jose
+    }
+
+    private fun getClientDataJwt(login: LoginPacket): String? {
+        return try {
+            val method = login.javaClass.getMethod("getExtra")
+            method.invoke(login)?.toString()
+        } catch (_: Exception) {
+            try {
+                val field = login.javaClass.getDeclaredField("extra")
+                field.isAccessible = true
+                field.get(login)?.toString()
+            } catch (_: Exception) { null }
+        }
+    }
+
+    private fun reSignClientDataJwt(rawJwt: String, privateKey: PrivateKey): String? {
+        return try {
+            val parts = rawJwt.split(".")
+            if (parts.size < 2) return null
+            val headerB64 = parts[0]
+            val payloadB64 = parts[1]
+            val signingInput = "$headerB64.$payloadB64"
+
+            val signature = Signature.getInstance("SHA384withECDSA").apply {
+                initSign(privateKey)
+                update(signingInput.toByteArray(Charsets.US_ASCII))
+            }
+            val sigBytes = derToJose(signature.sign(), 48)
+            val sigB64 = Base64.encodeToString(sigBytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+
+            "$signingInput.$sigB64"
+        } catch (e: Exception) {
+            Logger.e("PacketManager", "Failed to re-sign clientData JWT: ${e.message}")
+            null
+        }
+    }
+
+    private fun setLoginChainAndExtra(login: LoginPacket, chainList: List<String>, extraJwt: String) {
+        try {
+            val setChain = login.javaClass.getMethod("setChain", List::class.java)
+            setChain.invoke(login, chainList)
+        } catch (_: Exception) {
+            try {
+                val field = login.javaClass.getDeclaredField("chain")
+                field.isAccessible = true
+                field.set(login, chainList)
+            } catch (_: Exception) {}
+        }
+
+        try {
+            val setExtra = login.javaClass.getMethod("setExtra", String::class.java)
+            setExtra.invoke(login, extraJwt)
+        } catch (_: Exception) {
+            try {
+                val field = login.javaClass.getDeclaredField("extra")
+                field.isAccessible = true
+                field.set(login, extraJwt)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun prepareOutboundLoginPacket(incoming: LoginPacket): LoginPacket {
+        val authManager = proxySession.authManager
+        val kPair = proxyKeyPair
+
+        if (!authManager.liveXstsToken.isNullOrBlank() && kPair != null) {
+            try {
+                val mojangChainJson = authManager.cachedMinecraftChain
+                if (!mojangChainJson.isNullOrBlank()) {
+                    val chainArray = JsonParser.parseString(mojangChainJson).asJsonArray
+                    val chainList = mutableListOf<String>()
+                    chainArray.forEach { chainList.add(it.asString) }
+
+                    // Extract original skin/clientData from incoming LoginPacket
+                    val rawClientDataJwt = getClientDataJwt(incoming)
+                    val reSignedClientDataJwt = if (!rawClientDataJwt.isNullOrBlank()) {
+                        reSignClientDataJwt(rawClientDataJwt, kPair.private)
+                    } else null
+
+                    if (chainList.isNotEmpty() && reSignedClientDataJwt != null) {
+                        val outbound = LoginPacket().apply {
+                            protocolVersion = incoming.protocolVersion
+                        }
+                        setLoginChainAndExtra(outbound, chainList, reSignedClientDataJwt)
+                        Logger.i("PacketManager", "Prepared official Mojang-signed LoginPacket for The Hive (Preserving Minecraft skin & model).")
+                        return outbound
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.w("PacketManager", "Error preparing authenticated LoginPacket: ${e.message}, using incoming packet.")
+            }
+        }
+
+        return incoming
     }
 }

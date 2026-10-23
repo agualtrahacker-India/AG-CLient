@@ -39,7 +39,7 @@ class ProxySession(
         private set
 
     private var clientEventLoopGroup: NioEventLoopGroup? = null
-    private val sessionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    val sessionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     val worldState = WorldStateTracker()
     private val tickExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 

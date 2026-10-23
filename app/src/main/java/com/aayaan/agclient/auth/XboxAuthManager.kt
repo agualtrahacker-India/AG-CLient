@@ -47,6 +47,8 @@ class XboxAuthManager(private val context: Context) {
         private set
     var liveXstsToken: String? = null
         private set
+    var cachedMinecraftChain: String? = null
+        private set
 
     init {
         loadSavedCredentials()
@@ -57,6 +59,7 @@ class XboxAuthManager(private val context: Context) {
         val xuid = prefs.getString("xuid", null)
         val userHash = prefs.getString("user_hash", null)
         val xsts = prefs.getString("xsts_token", null)
+        cachedMinecraftChain = prefs.getString("minecraft_chain", null)
 
         if (gamertag != null && xuid != null && userHash != null && xsts != null) {
             liveGamertag = gamertag
@@ -280,12 +283,67 @@ class XboxAuthManager(private val context: Context) {
         }
     }
 
+    fun cancelLogin() {
+        _authState.value = XboxAuthState.Idle
+        Logger.i("XboxAuth", "Device code login cancelled by user.")
+    }
+
+    suspend fun getOrFetchMinecraftChain(proxyPublicKeyBase64: String): String? = withContext(Dispatchers.IO) {
+        val xsts = liveXstsToken ?: prefs.getString("xsts_token", null) ?: return@withContext null
+        val uHash = liveUserHash ?: prefs.getString("user_hash", null) ?: return@withContext null
+
+        val cached = cachedMinecraftChain
+        if (!cached.isNullOrBlank()) {
+            return@withContext cached
+        }
+
+        try {
+            Logger.i("XboxAuth", "Requesting official Mojang-signed certificate chain for proxy public key...")
+            val url = URL("https://multiplayer.minecraft.net/authentication")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.setRequestProperty("Authorization", "XBL3.0 x=$uHash;$xsts")
+
+            val reqJson = JsonObject().apply {
+                addProperty("identityPublicKey", proxyPublicKeyBase64)
+            }
+
+            OutputStreamWriter(conn.outputStream).use { it.write(reqJson.toString()) }
+
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JsonParser.parseString(resp).asJsonObject
+                if (json.has("chain")) {
+                    val chainArray = json.getAsJsonArray("chain")
+                    val chainStr = chainArray.toString()
+                    cachedMinecraftChain = chainStr
+                    prefs.edit().putString("minecraft_chain", chainStr).apply()
+                    Logger.i("XboxAuth", "Successfully obtained official Mojang certificate chain (${chainArray.size()} tokens)!")
+                    return@withContext chainStr
+                }
+            } else {
+                val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $code"
+                Logger.w("XboxAuth", "Mojang auth endpoint response $code: $err")
+            }
+        } catch (e: Exception) {
+            Logger.e("XboxAuth", "Failed to fetch Mojang certificate chain", e)
+        }
+        return@withContext null
+    }
+
     fun logout() {
         prefs.edit().clear().apply()
         liveGamertag = null
         liveXuid = null
         liveUserHash = null
         liveXstsToken = null
+        cachedMinecraftChain = null
         _authState.value = XboxAuthState.Idle
         Logger.i("XboxAuth", "Logged out and cleared tokens.")
     }

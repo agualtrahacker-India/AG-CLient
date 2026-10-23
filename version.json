@@ -1,6 +1,6 @@
 {
-  "version": "2.9.0-beta.1",
-  "versionCode": 14,
-  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.0-beta.1/AG-Client-v2.9.0-beta.1-release.apk",
-  "releaseNotes": "v2.9.0-beta.1: Advanced Real-Time Packet Diagnostics, Rate-Limit Free Auto-Updater, Interactive Connection Tester, and RakNet Packet Inspector on connection-test branch."
+  "version": "2.9.5",
+  "versionCode": 15,
+  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.5/AG-Client-v2.9.5-release.apk",
+  "releaseNotes": "v2.9.5: Official Microsoft Xbox Live authentication support for The Hive and featured servers, preserving your in-game custom skin, cape, and 3D geometry model."
 }

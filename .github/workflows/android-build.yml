@@ -59,27 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.9.0-beta.1-release
+          name: AG-Client-v2.9.5-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/connection-test'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.9.0-beta.1
-          name: "AG Client v2.9.0-beta.1 - Connection Test & Advanced Diagnostics"
+          tag_name: v2.9.5
+          name: "AG Client v2.9.5 - Official Xbox Auth & Exact Skin Preservation"
           body: |
-            ### AG Client (v2.9.0-beta.1 - Connection Test)
+            ### AG Client v2.9.5 (Featured Server Auth & Skin Preservation)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.9.0-beta.1:
-            - **Branch connection-test & Dedicated Beta 1 Diagnostics Build:** Specifically isolated test environment to diagnose Android sandbox and remote server connectivity.
-            - **RakNet Packet Inspector & Live Hex Telemetry:** Real-time decoding of RakNet datagrams (0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x13, 0x19, 0x1c) on tun0 and relay sockets.
-            - **Integrated In-App Connectivity Test Suite:** "Run Network Diagnostic" tests local proxy port 127.0.0.1:19133, DNS lookup latency, and direct RakNet UDP ping to target server.
-            - **Interactive User Response Feedback & Diagnostic Bundle:** One-tap feedback reporting ("Working", "Stuck: External Server", "Stuck: Multiplayer", "Timed Out") and comprehensive report copying.
-            - **Dual Transport Testing (RakNet & NetherNet WebRTC/TCP):** Added NetherNet LAN listener on UDP port 7551, companion NetherNet TCP signaling listener, and STUN/DTLS packet telemetry alongside classic RakNet.
-            - **Unlimited Rate-Limit Free Auto-Updater:** Replaced rate-limited GitHub REST API checks with GitHub Web Redirect and Fastly CDN version.json checks for unlimited checks.
-            - **Non-blocking Upstream Dispatcher:** Upstream DNS and bootstrap connection runs on IO coroutine dispatcher, preventing Netty thread stalls.
+            #### What's New in v2.9.5:
+            - **Official Microsoft & Xbox Live Auth for The Hive:** One-tap device code linking generates valid Mojang-signed certificate chains matched to proxy ECDH keys, solving the "Authentication Required" kick on featured servers.
+            - **Exact Minecraft Skin & Model Preservation:** Extracts the player's custom skin, cape, 3D geometry model, and animations directly from the local Minecraft app and re-signs it for the outbound session.
+            - **Account Management UI:** Added Copy Code, Copy Link, Open Link browser launcher, and Account Removal with confirmation dialog.
+            - **Netty Pipeline Exception Handling & Early Upstream Connection:** Initiates upstream connection concurrently during RequestNetworkSettingsPacket with zero-threshold compression alignment.
+            - **Dual Transport Testing:** RakNet UDP + NetherNet port 7551 discovery & companion TCP listeners.
+            - **Unlimited Rate-Limit Free Auto-Updater:** Bypasses GitHub API 403 limits using Fastly CDN and web redirects.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

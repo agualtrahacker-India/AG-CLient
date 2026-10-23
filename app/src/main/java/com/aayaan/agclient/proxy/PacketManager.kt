@@ -220,16 +220,19 @@ class PacketManager(
 
         val response = NetworkSettingsPacket().apply {
             compressionAlgorithm = PacketCompressionAlgorithm.ZLIB
-            compressionThreshold = 512
+            compressionThreshold = 0
         }
 
         try {
             serverSession.sendPacketImmediately(response)
             serverSession.setCompression(PacketCompressionAlgorithm.ZLIB)
-            Logger.i("PacketManager", "Responded with NetworkSettingsPacket & enabled ZLIB compression.")
+            Logger.i("PacketManager", "Responded with NetworkSettingsPacket (threshold=0) & enabled ZLIB compression.")
         } catch (e: Exception) {
             Logger.e("PacketManager", "Failed to send NetworkSettingsPacket to client", e)
         }
+
+        // Start upstream connection early concurrently with client handshake
+        proxySession.connectUpstream()
     }
 
     private fun handleClientLoginPacket(packet: LoginPacket) {
@@ -245,8 +248,19 @@ class PacketManager(
             Logger.w("PacketManager", "Could not extract client public key from LoginPacket. Using transparent handshake.")
         }
 
-        // Trigger upstream connection
-        proxySession.connectUpstream()
+        // If upstream is already connected, forward LoginPacket immediately!
+        val upstream = proxySession.clientSession
+        if (proxySession.isConnectedToUpstream && upstream != null && upstream.isConnected) {
+            try {
+                upstream.sendPacketImmediately(packet)
+                Logger.i("PacketManager", "Upstream already connected, forwarded player's LoginPacket immediately.")
+            } catch (e: Exception) {
+                Logger.e("PacketManager", "Failed to forward LoginPacket to connected upstream: ${e.message}")
+            }
+        } else {
+            // Trigger upstream connection if not already running
+            proxySession.connectUpstream()
+        }
     }
 
     private fun handleUpstreamNetworkSettings(packet: NetworkSettingsPacket, clientSession: BedrockClientSession) {

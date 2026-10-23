@@ -9,6 +9,9 @@ import com.aayaan.agclient.modules.ModuleManager
 import com.aayaan.agclient.state.WorldStateTracker
 import com.aayaan.agclient.utils.Logger
 import io.netty.bootstrap.Bootstrap
+import io.netty.channel.Channel
+import io.netty.channel.ChannelHandlerContext
+import io.netty.channel.ChannelInboundHandlerAdapter
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
 import org.cloudburstmc.netty.channel.raknet.RakChannelFactory
@@ -23,6 +26,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ProxySession(
     val serverSession: BedrockServerSession, // Local connection to Minecraft Bedrock App
@@ -57,6 +61,7 @@ class ProxySession(
     var clientProtocolVersion: Int = 671
     var isConnectedToUpstream: Boolean = false
         private set
+    private val isConnectingUpstream = AtomicBoolean(false)
 
     init {
         setupLocalSessionHandler()
@@ -104,6 +109,10 @@ class ProxySession(
     }
 
     fun connectUpstream() {
+        if (isConnectedToUpstream || !isConnectingUpstream.compareAndSet(false, true)) {
+            return
+        }
+
         sessionScope.launch {
             // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
             var rawHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
@@ -123,6 +132,7 @@ class ProxySession(
             val targetAddress = try {
                 InetSocketAddress(targetHost, targetPort)
             } catch (e: Exception) {
+                isConnectingUpstream.set(false)
                 Logger.upstream("DNS lookup failed for $targetHost: ${e.message}")
                 try {
                     serverSession.disconnect("§c[AG Client] Cannot resolve server host:\n§e$targetHost\n§7Please verify target IP and internet.")
@@ -133,6 +143,7 @@ class ProxySession(
 
             val dnsElapsed = System.currentTimeMillis() - dnsStart
             if (targetAddress.isUnresolved) {
+                isConnectingUpstream.set(false)
                 Logger.upstream("Host $targetHost unresolvable by DNS (${dnsElapsed}ms)")
                 try {
                     serverSession.disconnect("§c[AG Client] Host unresolvable:\n§e$targetHost")
@@ -156,6 +167,16 @@ class ProxySession(
                 .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, 25000)
                 .option(org.cloudburstmc.netty.channel.raknet.config.RakChannelOption.RAK_PROTOCOL_VERSION, 11)
                 .handler(object : BedrockClientInitializer() {
+                    override fun initChannel(ch: Channel) {
+                        super.initChannel(ch)
+                        ch.pipeline().addLast("upstream-exception-logger", object : ChannelInboundHandlerAdapter() {
+                            override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
+                                Logger.e("NettyUpstream", "Upstream Netty pipeline exception: ${cause::class.java.simpleName}: ${cause.message}", cause)
+                                super.exceptionCaught(ctx, cause)
+                            }
+                        })
+                    }
+
                     override fun initSession(session: BedrockClientSession) {
                         pendingSession = session
                     }
@@ -186,6 +207,7 @@ class ProxySession(
             future.whenComplete { session, connErr ->
                 watchdogTask.cancel(false)
                 if (connErr != null) {
+                    isConnectingUpstream.set(false)
                     Logger.upstream("Upstream connection to $targetHost ($resolvedIp) failed: ${connErr.message}")
                     try {
                         val msg = connErr.message ?: "Connection timed out"

@@ -121,31 +121,15 @@ class AGVirtualSandboxService : VpnService() {
                     .setMtu(1400)
                     .allowBypass()
 
-                val mcPackages = listOf(
-                    "com.mojang.minecraftpe",
-                    "com.mojang.minecraftpe.beta",
-                    "com.mojang.minecrafttrialpe",
-                    "com.microsoft.minecraft"
-                )
-
-                var addedAny = false
-                for (pkg in mcPackages) {
-                    try {
-                        builder.addAllowedApplication(pkg)
-                        addedAny = true
-                        Logger.d("VirtualSandbox", "Added $pkg to sandbox routing filter.")
-                    } catch (_: Exception) {}
-                }
-
-                if (!addedAny) {
-                    try {
-                        builder.addDisallowedApplication(packageName)
-                        Logger.i("VirtualSandbox", "No standard Minecraft package found; disallowed AG Client to route sandbox subnet.")
-                    } catch (_: Exception) {}
+                try {
+                    builder.addDisallowedApplication(packageName)
+                    Logger.i("VirtualSandbox", "Configured sandbox VPN: AG Client disallowed, all game packages permitted.")
+                } catch (e: Exception) {
+                    Logger.w("VirtualSandbox", "Could not disallow self package: ${e.message}")
                 }
 
                 vpnInterface = builder.establish()
-                Logger.i("VirtualSandbox", "Virtual network sandbox established (10.0.0.2).")
+                Logger.i("VirtualSandbox", "Virtual network sandbox established (10.0.0.2 / gateway 10.0.0.1).")
 
                 runPacketRelayLoop()
 
@@ -204,9 +188,13 @@ class AGVirtualSandboxService : VpnService() {
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
                         route.socket.send(packet)
-                    } catch (_: Exception) {}
+                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$localPort")
+                    } catch (e: Exception) {
+                        Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$localPort: ${e.message}")
+                    }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Logger.e("VirtualSandbox", "Packet relay loop error", e)
             }
         }
     }
@@ -230,9 +218,8 @@ class AGVirtualSandboxService : VpnService() {
         }
 
         return clientRoutes.computeIfAbsent(clientPort) {
-            val relaySocket = DatagramSocket().apply {
-                protect(this)
-            }
+            // Must NOT call protect(this) here: this socket only communicates with 127.0.0.1 loopback
+            val relaySocket = DatagramSocket()
 
             val job = scope.launch(Dispatchers.IO) {
                 val replyBuf = ByteArray(32768)
@@ -248,6 +235,7 @@ class AGVirtualSandboxService : VpnService() {
 
                         val replyLen = replyPacket.length
                         if (replyLen > 0) {
+                            Logger.d("VirtualSandbox", "Proxy replied $replyLen bytes, routing to 10.0.0.2:$clientPort")
                             val ipPacket = buildUdpIpPacket(
                                 srcIp = serverIp, // 10.0.0.1 (the virtual server)
                                 dstIp = clientIp, // Minecraft client IP
@@ -326,10 +314,9 @@ class AGVirtualSandboxService : VpnService() {
         packet[24] = ((udpLength shr 8) and 0xFF).toByte()
         packet[25] = (udpLength and 0xFF).toByte()
 
-        // Calculate valid UDP Checksum
-        val udpChecksum = computeUdpChecksum(srcIp, dstIp, srcPort, dstPort, payload, payloadOffset, payloadLength)
-        packet[26] = ((udpChecksum shr 8) and 0xFF).toByte()
-        packet[27] = (udpChecksum and 0xFF).toByte()
+        // Standard RFC 768: 0x0000 indicates UDP checksum unused, preventing Linux kernel drop
+        packet[26] = 0.toByte()
+        packet[27] = 0.toByte()
 
         // Payload
         System.arraycopy(payload, payloadOffset, packet, 28, payloadLength)

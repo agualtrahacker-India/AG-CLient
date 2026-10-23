@@ -121,11 +121,31 @@ class AGVirtualSandboxService : VpnService() {
                     .setMtu(1400)
                     .allowBypass()
 
-                try {
-                    builder.addDisallowedApplication(packageName)
-                    Logger.i("VirtualSandbox", "Configured sandbox VPN: AG Client disallowed, all game packages permitted.")
-                } catch (e: Exception) {
-                    Logger.w("VirtualSandbox", "Could not disallow self package: ${e.message}")
+                val mcPackages = listOf(
+                    "com.mojang.minecraftpe",
+                    "com.mojang.minecraftpe.beta",
+                    "com.mojang.minecrafttrialpe",
+                    "com.microsoft.minecraft"
+                )
+
+                var addedAny = false
+                for (pkg in mcPackages) {
+                    try {
+                        builder.addAllowedApplication(pkg)
+                        addedAny = true
+                        Logger.d("VirtualSandbox", "Added $pkg to sandbox routing filter.")
+                    } catch (_: Exception) {}
+                }
+
+                if (!addedAny) {
+                    try {
+                        builder.addDisallowedApplication(packageName)
+                        Logger.i("VirtualSandbox", "No standard Minecraft package installed yet; disallowed AG Client to route sandbox subnet.")
+                    } catch (e: Exception) {
+                        Logger.w("VirtualSandbox", "Could not disallow self package: ${e.message}")
+                    }
+                } else {
+                    Logger.i("VirtualSandbox", "Sandbox VPN configured: Minecraft traffic exclusively routed through 10.0.0.1 virtual gateway.")
                 }
 
                 vpnInterface = builder.establish()
@@ -147,11 +167,11 @@ class AGVirtualSandboxService : VpnService() {
 
         scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(32768)
-            val localPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
-            val proxyTarget = InetSocketAddress("127.0.0.1", localPort)
 
             try {
                 while (isRunning && isActive) {
+                    val currentLocalPort = (application as? com.aayaan.agclient.AGClientApplication)?.configManager?.currentConfig?.localBindPort ?: 19133
+                    val proxyTarget = InetSocketAddress("127.0.0.1", currentLocalPort)
                     val length = try {
                         inputStream.read(buffer)
                     } catch (_: Exception) {
@@ -188,9 +208,9 @@ class AGVirtualSandboxService : VpnService() {
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
                         route.socket.send(packet)
-                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$localPort")
+                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$currentLocalPort")
                     } catch (e: Exception) {
-                        Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$localPort: ${e.message}")
+                        Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$currentLocalPort: ${e.message}")
                     }
                 }
             } catch (e: Exception) {

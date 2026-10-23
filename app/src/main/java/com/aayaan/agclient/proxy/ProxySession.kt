@@ -14,7 +14,6 @@ import io.netty.channel.socket.nio.NioDatagramChannel
 import org.cloudburstmc.netty.channel.raknet.RakChannelFactory
 import org.cloudburstmc.protocol.bedrock.BedrockClientSession
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
-import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockClientInitializer
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
@@ -41,6 +40,15 @@ class ProxySession(
     val worldState = WorldStateTracker()
     private val tickExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
+    val packetManager: PacketManager = PacketManager(
+        proxySession = this,
+        serverSession = serverSession,
+        commandManager = commandManager,
+        guiManager = guiManager,
+        moduleManager = moduleManager,
+        worldState = worldState
+    )
+
     var cachedClientData: String? = null
     var cachedSkinData: String? = null
     var cachedLoginPacket: LoginPacket? = null
@@ -57,7 +65,7 @@ class ProxySession(
         serverSession.setPacketHandler(object : BedrockPacketHandler {
             override fun handlePacket(packet: BedrockPacket): PacketSignal {
                 try {
-                    val signal = handleClientPacket(packet)
+                    val signal = packetManager.onClientPacket(packet)
                     if (signal == PacketSignal.UNHANDLED) {
                         clientSession?.sendPacket(packet)
                     }
@@ -93,79 +101,7 @@ class ProxySession(
         }, 50, 50, TimeUnit.MILLISECONDS) // 20 ticks per second
     }
 
-    fun handleClientPacket(packet: BedrockPacket): PacketSignal {
-        Logger.packet("Client->Proxy", packet.javaClass.simpleName)
-
-        // 0. Intercept Network Settings Request (Modern Bedrock handshake)
-        if (packet is RequestNetworkSettingsPacket) {
-            handleNetworkSettingsRequest(packet)
-            return PacketSignal.HANDLED
-        }
-
-        // 0.1 Intercept Client Encryption Handshake response
-        if (packet is ClientToServerHandshakePacket) {
-            Logger.i("ProxySession", "Intercepted ClientToServerHandshakePacket from client. Forwarding upstream.")
-            clientSession?.sendPacketImmediately(packet)
-            return PacketSignal.HANDLED
-        }
-
-        // 1. Intercept Commands (Private Chat Filter)
-        if (commandManager.handleClientPacket(packet, this) == PacketSignal.HANDLED) {
-            return PacketSignal.HANDLED
-        }
-
-        // 2. Intercept Modal Form Responses (GUI)
-        if (guiManager.handleClientPacket(packet, this) == PacketSignal.HANDLED) {
-            return PacketSignal.HANDLED
-        }
-
-        // 3. Update World & Player state
-        worldState.handleClientPacket(packet)
-
-        // 4. Intercept Initial Login Packet to connect upstream
-        if (packet is LoginPacket) {
-            handleClientLogin(packet)
-            return PacketSignal.HANDLED
-        }
-
-        // 5. Run through active modules
-        val moduleSignal = moduleManager.onClientPacket(packet, this)
-        if (moduleSignal == PacketSignal.HANDLED) {
-            return PacketSignal.HANDLED
-        }
-
-        return PacketSignal.UNHANDLED
-    }
-
-    private fun handleNetworkSettingsRequest(packet: RequestNetworkSettingsPacket) {
-        clientProtocolVersion = packet.protocolVersion
-        Logger.i("ProxySession", "Client requested network settings. Protocol Version: $clientProtocolVersion")
-
-        // Dynamically assign the exact matching BedrockCodec for this client's protocol version
-        val matchedCodec = BedrockCodecFinder.findCodec(clientProtocolVersion)
-        if (matchedCodec != null) {
-            serverSession.codec = matchedCodec
-            Logger.i("ProxySession", "Updated serverSession codec to protocol: ${matchedCodec.protocolVersion}")
-        }
-
-        val response = NetworkSettingsPacket().apply {
-            compressionAlgorithm = PacketCompressionAlgorithm.ZLIB
-            compressionThreshold = 512
-        }
-
-        try {
-            serverSession.sendPacketImmediately(response)
-            serverSession.setCompression(PacketCompressionAlgorithm.ZLIB)
-            Logger.i("ProxySession", "Responded with NetworkSettingsPacket & enabled ZLIB compression.")
-        } catch (e: Exception) {
-            Logger.e("ProxySession", "Failed to send NetworkSettingsPacket", e)
-        }
-    }
-
-    private fun handleClientLogin(packet: LoginPacket) {
-        Logger.i("ProxySession", "Intercepted LoginPacket. Protocol Version: ${packet.protocolVersion}")
-        cachedLoginPacket = packet
-
+    fun connectUpstream() {
         // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
         var rawHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
         if (rawHost.isBlank() || rawHost == "127.0.0.1" || rawHost == "10.0.0.1" || rawHost.equals("localhost", ignoreCase = true)) {
@@ -271,7 +207,7 @@ class ProxySession(
                 Logger.i("ProxySession", "Sent RequestNetworkSettingsPacket ($effectiveProto) to upstream server.")
             } catch (e: Exception) {
                 Logger.e("ProxySession", "Failed to send RequestNetworkSettingsPacket upstream", e)
-                session.sendPacket(packet)
+                cachedLoginPacket?.let { session.sendPacket(it) }
             }
         }
     }
@@ -280,39 +216,11 @@ class ProxySession(
         session.setPacketHandler(object : BedrockPacketHandler {
             override fun handlePacket(packet: BedrockPacket): PacketSignal {
                 try {
-                    if (packet is NetworkSettingsPacket) {
-                        Logger.i("ProxySession", "Upstream server replied with NetworkSettingsPacket: ${packet.compressionAlgorithm}")
-                        try {
-                            session.setCompression(packet.compressionAlgorithm)
-                        } catch (e: Exception) {
-                            Logger.w("ProxySession", "Could not set upstream compression: ${e.message}")
-                        }
-
-                        // Upstream is ready for authentication! Send cached LoginPacket
-                        cachedLoginPacket?.let { login ->
-                            session.sendPacketImmediately(login)
-                            Logger.i("ProxySession", "Forwarded player's LoginPacket to upstream server.")
-                        }
-                        return PacketSignal.HANDLED
-                    }
-
-                    if (packet is ServerToClientHandshakePacket) {
-                        Logger.i("ProxySession", "Upstream server requested handshake. Forwarding to Minecraft client.")
-                        serverSession.sendPacketImmediately(packet)
-                        return PacketSignal.HANDLED
-                    }
-
-                    if (packet is DisconnectPacket) {
-                        Logger.w("ProxySession", "Upstream server disconnected session: ${packet.kickMessage}")
-                        serverSession.sendPacket(packet)
-                        cleanup()
-                        return PacketSignal.HANDLED
-                    }
-
-                    val signal = handleServerPacket(packet)
+                    val signal = packetManager.onServerPacket(packet, session)
                     if (signal == PacketSignal.UNHANDLED) {
                         serverSession.sendPacket(packet)
                     }
+                    handleServerSpawnPacket(packet)
                 } catch (t: Throwable) {
                     Logger.e("ProxySession", "Error processing server packet ${packet.javaClass.simpleName}: ${t.message}", t)
                     try { serverSession.sendPacket(packet) } catch (_: Exception) {}
@@ -324,19 +232,7 @@ class ProxySession(
 
     private var hasSentWelcomeMessage = false
 
-    private fun sendWelcomeMessage() {
-        if (config.isGhostMode) return
-        sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.7.0 §7- §a§lMade by Aayaan Ghosh")
-        sendChatToClient("§aConnected to server successfully!")
-        sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
-        sendChatToClient("§8§m----------------------------------------")
-    }
-
-    fun handleServerPacket(packet: BedrockPacket): PacketSignal {
-        Logger.packet("Server->Proxy", packet.javaClass.simpleName)
-
-        // 0. Trigger join welcome message when player spawns
+    private fun handleServerSpawnPacket(packet: BedrockPacket) {
         if (packet is PlayStatusPacket) {
             Logger.i("ProxySession", "PlayStatus from server: ${packet.status}")
             if (packet.status == PlayStatusPacket.Status.PLAYER_SPAWN && !hasSentWelcomeMessage) {
@@ -354,34 +250,15 @@ class ProxySession(
                 }
             }, 2500, TimeUnit.MILLISECONDS)
         }
+    }
 
-        try {
-            // 1. Update World & Entity state
-            worldState.handleServerPacket(packet)
-        } catch (t: Throwable) {
-            Logger.d("ProxySession", "WorldState ignore error: ${t.message}")
-        }
-
-        try {
-            // 2. Intercept AvailableCommandsPacket to inject proxy custom commands for autocompletion
-            if (packet is AvailableCommandsPacket) {
-                commandManager.injectCustomCommands(packet)
-            }
-        } catch (t: Throwable) {
-            Logger.d("ProxySession", "CommandManager ignore error: ${t.message}")
-        }
-
-        try {
-            // 3. Run through active modules
-            val moduleSignal = moduleManager.onServerPacket(packet, this)
-            if (moduleSignal == PacketSignal.HANDLED) {
-                return PacketSignal.HANDLED
-            }
-        } catch (t: Throwable) {
-            Logger.d("ProxySession", "ModuleManager ignore error: ${t.message}")
-        }
-
-        return PacketSignal.UNHANDLED
+    private fun sendWelcomeMessage() {
+        if (config.isGhostMode) return
+        sendChatToClient("§8§m----------------------------------------")
+        sendChatToClient("§b§lAG Client §fv2.8.0 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§aConnected to server successfully!")
+        sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
+        sendChatToClient("§8§m----------------------------------------")
     }
 
     fun sendToClient(packet: BedrockPacket) {

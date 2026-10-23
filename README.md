@@ -1,7 +1,7 @@
-# 🛡️ AG Client (v2.7.0) - Standalone Minecraft Bedrock Proxy for Android
+# 🛡️ AG Client (v2.8.0) - Standalone Minecraft Bedrock Proxy for Android
 
 [![Android CI & Release](https://github.com/agualtrahacker-India/AG-CLient/actions/workflows/android-build.yml/badge.svg)](https://github.com/agualtrahacker-India/AG-CLient/actions)
-![Version](https://img.shields.io/badge/Release-v2.7.0-blueviolet)
+![Version](https://img.shields.io/badge/Release-v2.8.0-blueviolet)
 ![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-brightgreen)
 ![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2014%20(API%2034)-blue)
 ![Bedrock Protocol](https://img.shields.io/badge/Bedrock%20Protocol-CloudburstMC%201.21%2B-purple)
@@ -14,18 +14,18 @@
 
 ---
 
-## ✨ What's New in v2.7.0
+## ✨ What's New in v2.8.0
 
-* 🛡️ **Resolved Socket BindException & Duplicate Listener Bug**: Fixed `java.net.BindException: Address already in use` by configuring `SO_REUSEADDR` on Netty UDP datagram channels, preventing re-entrant binds, and ensuring clean synchronous socket release upon service stops.
-* 📋 **1-Tap Console Log Copying**: Added an integrated "Copy" button in the Live Packet & System Console view with instant Android clipboard copying so logs and diagnostic messages can be exported with a single tap.
+* 🔐 **MitM Packet Manager & Key Exchange Engine**: Built a full bi-directional MitM packet interceptor with dynamic ECDH (`secp384r1`/`secp256r1`) key derivation and AES cipher activation. Eliminates multiplayer "Connection failed" drops by terminating encryption handshakes independently on both legs (Minecraft <-> Proxy and Proxy <-> Server).
+* 🛡️ **Resilient Multi-Port Proxy Listener**: Eliminates `java.net.BindException: Address already in use` by dynamically testing candidate ports (`19133`, `19134`, `19135`), applying `SO_REUSEADDR`, and cleanly shutting down event loops and channels prior to binding.
+* 🌐 **Virtual Sandbox Per-App Routing (10.0.0.1:19133 & 19132)**: Restored dedicated Minecraft package filtering (`com.mojang.minecraftpe`, etc.) with dynamic relay port routing, ensuring only game packets are intercepted while keeping external network connections fast and stable.
+* 📋 **1-Tap Console Log Copying**: Integrated "Copy" button in the Live Packet & System Console view with instant Android clipboard copying so logs and diagnostic messages can be exported with a single tap.
 * 🛡️ **Multiplayer Packet Pipeline Error Shielding**: Shielded all inbound and outbound packet event handlers (`WorldStateTracker`, `ModuleManager`, `CommandManager`) with isolated exception wrappers to prevent unexpected packets from dropping the connection.
-* ⏱️ **Eliminated Upstream Connection Timed Out Issues**: Resolved Netty client channel handshake race condition by deferring packet dispatch until RakNet channel connection is fully verified. Increased MTU negotiation timeout to 25s for reliable performance over cellular (4G/5G) and Wi-Fi networks worldwide.
-* 🛡️ **Hardened Virtual Sandbox (`10.0.0.1:19133`) for Modern Minecraft (Ore UI)**: Tailored specifically for Minecraft Bedrock 1.21+ New Play Screen where Friends tab is removed. Automatically starts proxy service alongside sandbox, cleans up dead routes, and guarantees bypass routing for external connections.
-* 🔄 **Automated 30-Minute Background Updates & System Notifications**: Removed the manual "Check for Updates" button to prevent hitting GitHub API rate limits. Checks run silently every 30 minutes with persistent timestamp caching and trigger Android notifications when updates drop.
+* 🔄 **Automated 30-Minute Background Updates & System Notifications**: Checks run silently every 30 minutes with persistent timestamp caching and trigger Android notifications when updates drop.
 * 💬 **In-Game Join Welcome & Attribution**: When spawning on any server, a private message is sent to your chat:
   ```text
   ----------------------------------------
-  AG Client v2.7.0 - Made by Aayaan Ghosh
+  AG Client v2.8.0 - Made by Aayaan Ghosh
   Connected to server successfully!
   Type .help or /help to see command lists.
   ----------------------------------------
@@ -37,7 +37,7 @@
 ## 🚀 Complete Quick Start & Connection Guide
 
 ### 1. Installation
-1. Download the latest **`AG-Client-v2.7.0-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
+1. Download the latest **`AG-Client-v2.8.0-release.apk`** from [Releases](https://github.com/agualtrahacker-India/AG-CLient/releases).
 2. Install the APK on your Android device (Play Protect verifies it is clean and safe).
 
 ---

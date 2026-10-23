@@ -107,17 +107,17 @@ class BedrockProxyService : Service() {
                     serverChannel?.close()?.syncUninterruptibly()
                     serverChannel = null
                 } catch (_: Exception) {}
-
-                val bindAddress = InetSocketAddress("0.0.0.0", config.localBindPort)
-                val group = NioEventLoopGroup(2)
-                eventLoopGroup = group
+                try {
+                    eventLoopGroup?.shutdownGracefully(0, 300, java.util.concurrent.TimeUnit.MILLISECONDS)?.syncUninterruptibly()
+                    eventLoopGroup = null
+                } catch (_: Exception) {}
 
                 // Configure RakNet Server Pong
                 val defaultCodec = BedrockCodecFinder.getDefaultCodec()
                 val targetSubMotd = if (config.targetIp.isNotBlank()) "§aTarget: ${config.targetIp}:${config.targetPort}" else "§eSet Target in AG App"
                 val pong = BedrockPong().apply {
                     edition("MCPE")
-                    motd("§bAG Client v2.7.0 §7[Proxy]")
+                    motd("§bAG Client v2.8.0 §7[Proxy]")
                     subMotd(targetSubMotd)
                     playerCount(1)
                     maximumPlayerCount(10)
@@ -129,50 +129,75 @@ class BedrockProxyService : Service() {
                     protocolVersion(defaultCodec?.protocolVersion ?: 712)
                 }
 
-                val bootstrap = ServerBootstrap()
-                    .channelFactory(RakChannelFactory.server(NioDatagramChannel::class.java))
-                    .group(group)
-                    .option(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
-                    .childOption(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
-                    .option(RakChannelOption.RAK_ADVERTISEMENT, pong.toByteBuf())
-                    .option(RakChannelOption.RAK_HANDLE_PING, true)
-                    .childHandler(object : BedrockServerInitializer() {
-                        override fun initSession(session: BedrockServerSession) {
-                            val remoteAddress = session.socketAddress as? InetSocketAddress ?: return
-                            Logger.i("ProxyService", "Local Minecraft client connected: $remoteAddress")
+                // Resilient Port Binding: Try configured port first, fallback to next port if in TIME_WAIT or held
+                val candidatePorts = listOf(config.localBindPort, 19133, 19134, 19135).distinct()
+                var boundSuccess = false
 
-                            // Crucial: Assign initial codec so session can serialize/deserialize packets without throwing
-                            val initialCodec = BedrockCodecFinder.getDefaultCodec()
-                            if (initialCodec != null) {
-                                session.codec = initialCodec
-                                Logger.i("ProxyService", "Assigned initial codec (${initialCodec.protocolVersion}) to local session.")
-                            }
+                for (port in candidatePorts) {
+                    try {
+                        val bindAddress = InetSocketAddress("0.0.0.0", port)
+                        val group = NioEventLoopGroup(2)
+                        eventLoopGroup = group
 
-                            val proxySession = ProxySession(
-                                serverSession = session,
-                                config = config,
-                                configManager = app.configManager,
-                                authManager = app.xboxAuthManager,
-                                moduleManager = app.moduleManager,
-                                commandManager = app.commandManager,
-                                guiManager = app.guiManager
-                            )
-                            activeSessions[remoteAddress] = proxySession
+                        val bootstrap = ServerBootstrap()
+                            .channelFactory(RakChannelFactory.server(NioDatagramChannel::class.java))
+                            .group(group)
+                            .option(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
+                            .childOption(io.netty.channel.ChannelOption.SO_REUSEADDR, true)
+                            .option(RakChannelOption.RAK_ADVERTISEMENT, pong.toByteBuf())
+                            .option(RakChannelOption.RAK_HANDLE_PING, true)
+                            .childHandler(object : BedrockServerInitializer() {
+                                override fun initSession(session: BedrockServerSession) {
+                                    val remoteAddress = session.socketAddress as? InetSocketAddress ?: return
+                                    Logger.i("ProxyService", "Local Minecraft client connected: $remoteAddress")
+
+                                    // Assign initial codec so session can serialize/deserialize packets without throwing
+                                    val initialCodec = BedrockCodecFinder.getDefaultCodec()
+                                    if (initialCodec != null) {
+                                        session.codec = initialCodec
+                                        Logger.i("ProxyService", "Assigned initial codec (${initialCodec.protocolVersion}) to local session.")
+                                    }
+
+                                    val proxySession = ProxySession(
+                                        serverSession = session,
+                                        config = config,
+                                        configManager = app.configManager,
+                                        authManager = app.xboxAuthManager,
+                                        moduleManager = app.moduleManager,
+                                        commandManager = app.commandManager,
+                                        guiManager = app.guiManager
+                                    )
+                                    activeSessions[remoteAddress] = proxySession
+                                }
+                            })
+
+                        val channelFuture = bootstrap.bind(bindAddress).sync()
+                        serverChannel = channelFuture.channel()
+
+                        if (config.localBindPort != port) {
+                            config.localBindPort = port
+                            app.configManager.saveConfig(config)
+                            Logger.i("ProxyService", "Switched localBindPort to available port: $port")
                         }
-                    })
 
-                val channelFuture = try {
-                    bootstrap.bind(bindAddress).sync()
-                } catch (bindEx: java.net.BindException) {
-                    Logger.w("ProxyService", "Port ${config.localBindPort} in TIME_WAIT. Retrying in 400ms with SO_REUSEADDR...")
-                    delay(400)
-                    bootstrap.bind(bindAddress).sync()
+                        boundSuccess = true
+                        Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:$port")
+                        break
+                    } catch (bindEx: Throwable) {
+                        Logger.w("ProxyService", "Port $port unavailable (${bindEx.message}), attempting next available port...")
+                        try {
+                            eventLoopGroup?.shutdownGracefully(0, 200, java.util.concurrent.TimeUnit.MILLISECONDS)?.syncUninterruptibly()
+                        } catch (_: Exception) {}
+                        eventLoopGroup = null
+                        delay(250)
+                    }
                 }
-                serverChannel = channelFuture.channel()
+
+                if (!boundSuccess) {
+                    throw IllegalStateException("Failed to bind proxy on any candidate port: $candidatePorts")
+                }
 
                 _serviceState.value = ServiceState.RUNNING
-                Logger.i("ProxyService", "Bedrock proxy server bound to 0.0.0.0:${config.localBindPort}")
-
                 updateNotification("Proxy Active on port ${config.localBindPort}")
 
                 // Broadcast LAN discovery Pong so AG Client appears directly in Minecraft Friends tab
@@ -218,7 +243,7 @@ class BedrockProxyService : Service() {
                     val targetName = if (currentConfig.targetIp.isNotBlank()) currentConfig.targetIp else "AG Proxy"
                     val broadcastPort = currentConfig.localBindPort
                     // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
-                    val motd = "MCPE;§bAG Client v2.7.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
+                    val motd = "MCPE;§bAG Client v2.8.0 §7[$targetName];712;1.21.20;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
                     val motdBytes = motd.toByteArray(Charsets.UTF_8)
 
                     val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {
@@ -382,7 +407,7 @@ class BedrockProxyService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AG Client v2.7.0 (Active Proxy)")
+            .setContentTitle("AG Client v2.8.0 (Active Proxy)")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)

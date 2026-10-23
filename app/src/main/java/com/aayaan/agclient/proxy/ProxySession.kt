@@ -17,6 +17,7 @@ import org.cloudburstmc.protocol.bedrock.BedrockServerSession
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockClientInitializer
 import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.common.PacketSignal
+import kotlinx.coroutines.*
 import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
@@ -37,6 +38,7 @@ class ProxySession(
         private set
 
     private var clientEventLoopGroup: NioEventLoopGroup? = null
+    private val sessionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     val worldState = WorldStateTracker()
     private val tickExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
@@ -102,112 +104,127 @@ class ProxySession(
     }
 
     fun connectUpstream() {
-        // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
-        var rawHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
-        if (rawHost.isBlank() || rawHost == "127.0.0.1" || rawHost == "10.0.0.1" || rawHost.equals("localhost", ignoreCase = true)) {
-            rawHost = "geo.hivebedrock.network"
-        }
-        val targetHost = rawHost
-        val targetPort = if (DynamicTargetTracker.activeTargetHost != null) {
-            DynamicTargetTracker.activeTargetPort
-        } else {
-            if (config.targetPort > 0) config.targetPort else 19132
-        }
-
-        Logger.i("ProxySession", "Connecting upstream to target: $targetHost:$targetPort")
-
-        val group = NioEventLoopGroup(2)
-        clientEventLoopGroup = group
-
-        val future = CompletableFuture<BedrockClientSession>()
-        var pendingSession: BedrockClientSession? = null
-
-        val bootstrap = Bootstrap()
-            .channelFactory(RakChannelFactory.client(NioDatagramChannel::class.java))
-            .group(group)
-            .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, 25000)
-            .option(org.cloudburstmc.netty.channel.raknet.config.RakChannelOption.RAK_PROTOCOL_VERSION, 11)
-            .handler(object : BedrockClientInitializer() {
-                override fun initSession(session: BedrockClientSession) {
-                    pendingSession = session
-                }
-            })
-
-        val watchdogTask = tickExecutor.schedule({
-            if (!future.isDone) {
-                Logger.w("ProxySession", "Upstream connection to $targetHost:$targetPort timed out after 25 seconds.")
-                future.completeExceptionally(java.util.concurrent.TimeoutException("Remote server $targetHost:$targetPort did not respond within 25 seconds. Please verify target IP & network."))
+        sessionScope.launch {
+            // Resolve upstream target (Dynamically detected from tapped server or configured fallback)
+            var rawHost = (DynamicTargetTracker.activeTargetHost ?: config.targetIp).trim()
+            if (rawHost.isBlank() || rawHost == "127.0.0.1" || rawHost == "10.0.0.1" || rawHost.equals("localhost", ignoreCase = true)) {
+                rawHost = "geo.hivebedrock.network"
             }
-        }, 25000, TimeUnit.MILLISECONDS)
-
-        val targetAddress = try {
-            InetSocketAddress(targetHost, targetPort)
-        } catch (e: Exception) {
-            Logger.e("ProxySession", "Failed to resolve address for $targetHost", e)
-            future.completeExceptionally(e)
-            return
-        }
-
-        if (targetAddress.isUnresolved) {
-            Logger.e("ProxySession", "Target host could not be resolved: $targetHost")
-            future.completeExceptionally(java.net.UnknownHostException("Cannot resolve $targetHost"))
-            return
-        }
-
-        bootstrap.connect(targetAddress).addListener { connFuture ->
-            if (connFuture.isSuccess) {
-                val s = pendingSession
-                if (s != null) {
-                    future.complete(s)
-                } else {
-                    future.completeExceptionally(IllegalStateException("Session wrapper was null on connect success"))
-                }
+            val targetHost = rawHost
+            val targetPort = if (DynamicTargetTracker.activeTargetHost != null) {
+                DynamicTargetTracker.activeTargetPort
             } else {
-                future.completeExceptionally(connFuture.cause() ?: Exception("Connect failed to $targetHost:$targetPort"))
-            }
-        }
-
-        future.whenComplete { session, connErr ->
-            watchdogTask.cancel(false)
-            if (connErr != null) {
-                Logger.e("ProxySession", "Failed to connect to $targetHost:$targetPort", connErr)
-                try {
-                    val msg = connErr.message ?: "Connection timed out"
-                    serverSession.disconnect("§c[AG Client] Connection Timed Out!\n§7Server: §e$targetHost:$targetPort\n§cReason: §f$msg\n§ePlease verify target IP & port in AG Client.")
-                } catch (_: Exception) {
-                    serverSession.disconnect()
-                }
-                cleanup()
-                return@whenComplete
+                if (config.targetPort > 0) config.targetPort else 19132
             }
 
-            clientSession = session
-            isConnectedToUpstream = true
-            Logger.i("ProxySession", "Connected to remote server: $targetHost:$targetPort")
+            Logger.upstream("Initiating upstream connection flow to $targetHost:$targetPort...")
 
-            // Automatically record successfully connected server to history
-            configManager.addServerToHistory(targetHost, targetPort)
-
-            // Sync codec with local client session
-            val effectiveCodec = serverSession.codec ?: BedrockCodecFinder.findCodec(clientProtocolVersion) ?: BedrockCodecFinder.getDefaultCodec()
-            if (effectiveCodec != null) {
-                session.codec = effectiveCodec
-                serverSession.codec = effectiveCodec
-            }
-
-            setupRemoteSessionHandler(session)
-
-            // Request network settings from upstream server using the best codec we support
-            val effectiveProto = session.codec?.protocolVersion ?: clientProtocolVersion
-            val upstreamReq = RequestNetworkSettingsPacket().apply {
-                protocolVersion = effectiveProto
-            }
-            try {
-                session.sendPacketImmediately(upstreamReq)
-                Logger.i("ProxySession", "Sent RequestNetworkSettingsPacket ($effectiveProto) to upstream server.")
+            val dnsStart = System.currentTimeMillis()
+            val targetAddress = try {
+                InetSocketAddress(targetHost, targetPort)
             } catch (e: Exception) {
-                Logger.e("ProxySession", "Failed to send RequestNetworkSettingsPacket upstream", e)
-                cachedLoginPacket?.let { session.sendPacket(it) }
+                Logger.upstream("DNS lookup failed for $targetHost: ${e.message}")
+                try {
+                    serverSession.disconnect("§c[AG Client] Cannot resolve server host:\n§e$targetHost\n§7Please verify target IP and internet.")
+                } catch (_: Exception) {}
+                cleanup()
+                return@launch
+            }
+
+            val dnsElapsed = System.currentTimeMillis() - dnsStart
+            if (targetAddress.isUnresolved) {
+                Logger.upstream("Host $targetHost unresolvable by DNS (${dnsElapsed}ms)")
+                try {
+                    serverSession.disconnect("§c[AG Client] Host unresolvable:\n§e$targetHost")
+                } catch (_: Exception) {}
+                cleanup()
+                return@launch
+            }
+
+            val resolvedIp = targetAddress.address?.hostAddress ?: targetHost
+            Logger.upstream("DNS resolved $targetHost -> $resolvedIp in ${dnsElapsed}ms")
+
+            val group = NioEventLoopGroup(2)
+            clientEventLoopGroup = group
+
+            val future = CompletableFuture<BedrockClientSession>()
+            var pendingSession: BedrockClientSession? = null
+
+            val bootstrap = Bootstrap()
+                .channelFactory(RakChannelFactory.client(NioDatagramChannel::class.java))
+                .group(group)
+                .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, 25000)
+                .option(org.cloudburstmc.netty.channel.raknet.config.RakChannelOption.RAK_PROTOCOL_VERSION, 11)
+                .handler(object : BedrockClientInitializer() {
+                    override fun initSession(session: BedrockClientSession) {
+                        pendingSession = session
+                    }
+                })
+
+            val watchdogTask = tickExecutor.schedule({
+                if (!future.isDone) {
+                    Logger.upstream("RakNet connection to $resolvedIp:$targetPort timed out after 25 seconds.")
+                    future.completeExceptionally(java.util.concurrent.TimeoutException("Remote server $targetHost:$targetPort ($resolvedIp) did not respond within 25 seconds. Please verify target IP & network."))
+                }
+            }, 25000, TimeUnit.MILLISECONDS)
+
+            Logger.upstream("Transmitting RakNet Open Connection Request 1 to $resolvedIp:$targetPort...")
+
+            bootstrap.connect(targetAddress).addListener { connFuture ->
+                if (connFuture.isSuccess) {
+                    val s = pendingSession
+                    if (s != null) {
+                        future.complete(s)
+                    } else {
+                        future.completeExceptionally(IllegalStateException("Session wrapper was null on connect success"))
+                    }
+                } else {
+                    future.completeExceptionally(connFuture.cause() ?: Exception("Connect failed to $targetHost:$targetPort ($resolvedIp)"))
+                }
+            }
+
+            future.whenComplete { session, connErr ->
+                watchdogTask.cancel(false)
+                if (connErr != null) {
+                    Logger.upstream("Upstream connection to $targetHost ($resolvedIp) failed: ${connErr.message}")
+                    try {
+                        val msg = connErr.message ?: "Connection timed out"
+                        serverSession.disconnect("§c[AG Client] Connection Timed Out!\n§7Server: §e$targetHost:$targetPort\n§7Resolved: §b$resolvedIp\n§cReason: §f$msg\n§ePlease verify target IP in AG Client Console.")
+                    } catch (_: Exception) {
+                        serverSession.disconnect()
+                    }
+                    cleanup()
+                    return@whenComplete
+                }
+
+                clientSession = session
+                isConnectedToUpstream = true
+                Logger.upstream("Connected to upstream server: $targetHost ($resolvedIp:$targetPort) successfully!")
+
+                // Automatically record successfully connected server to history
+                configManager.addServerToHistory(targetHost, targetPort)
+
+                // Sync codec with local client session
+                val effectiveCodec = serverSession.codec ?: BedrockCodecFinder.findCodec(clientProtocolVersion) ?: BedrockCodecFinder.getDefaultCodec()
+                if (effectiveCodec != null) {
+                    session.codec = effectiveCodec
+                    serverSession.codec = effectiveCodec
+                }
+
+                setupRemoteSessionHandler(session)
+
+                // Request network settings from upstream server using the best codec we support
+                val effectiveProto = session.codec?.protocolVersion ?: clientProtocolVersion
+                val upstreamReq = RequestNetworkSettingsPacket().apply {
+                    protocolVersion = effectiveProto
+                }
+                try {
+                    session.sendPacketImmediately(upstreamReq)
+                    Logger.upstream("Sent RequestNetworkSettingsPacket ($effectiveProto) to upstream server.")
+                } catch (e: Exception) {
+                    Logger.upstream("Failed to send RequestNetworkSettingsPacket upstream: ${e.message}")
+                    cachedLoginPacket?.let { session.sendPacket(it) }
+                }
             }
         }
     }
@@ -255,7 +272,7 @@ class ProxySession(
     private fun sendWelcomeMessage() {
         if (config.isGhostMode) return
         sendChatToClient("§8§m----------------------------------------")
-        sendChatToClient("§b§lAG Client §fv2.8.1 §7- §a§lMade by Aayaan Ghosh")
+        sendChatToClient("§b§lAG Client §fv2.9.0-beta.1 §7- §a§lMade by Aayaan Ghosh")
         sendChatToClient("§aConnected to server successfully!")
         sendChatToClient("§eType §b.help §eor §b/help §eto see command lists.")
         sendChatToClient("§8§m----------------------------------------")
@@ -282,6 +299,9 @@ class ProxySession(
     }
 
     fun cleanup() {
+        try {
+            sessionScope.cancel()
+        } catch (_: Exception) {}
         try {
             tickExecutor.shutdownNow()
         } catch (_: Exception) {}

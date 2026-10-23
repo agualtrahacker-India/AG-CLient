@@ -8,7 +8,7 @@ import java.util.Date
 import java.util.Locale
 
 enum class LogLevel {
-    DEBUG, INFO, WARN, ERROR, PACKET
+    DEBUG, INFO, WARN, ERROR, PACKET, TUNNEL, RELAY, UPSTREAM, DIAG, FEEDBACK
 }
 
 data class LogEntry(
@@ -20,7 +20,7 @@ data class LogEntry(
 
 object Logger {
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
-    private val _logsFlow = MutableSharedFlow<LogEntry>(replay = 100, extraBufferCapacity = 200)
+    private val _logsFlow = MutableSharedFlow<LogEntry>(replay = 150, extraBufferCapacity = 300)
     val logsFlow: SharedFlow<LogEntry> = _logsFlow.asSharedFlow()
     private val logHistory = java.util.Collections.synchronizedList(mutableListOf<LogEntry>())
 
@@ -33,7 +33,7 @@ object Logger {
         )
         synchronized(logHistory) {
             logHistory.add(entry)
-            if (logHistory.size > 500) {
+            if (logHistory.size > 1000) {
                 logHistory.removeAt(0)
             }
         }
@@ -44,7 +44,8 @@ object Logger {
                 LogLevel.INFO -> android.util.Log.INFO
                 LogLevel.WARN -> android.util.Log.WARN
                 LogLevel.ERROR -> android.util.Log.ERROR
-                LogLevel.PACKET -> android.util.Log.VERBOSE
+                LogLevel.PACKET, LogLevel.TUNNEL, LogLevel.RELAY, LogLevel.UPSTREAM -> android.util.Log.VERBOSE
+                LogLevel.DIAG, LogLevel.FEEDBACK -> android.util.Log.INFO
             },
             tag,
             message
@@ -77,5 +78,33 @@ object Logger {
     fun packet(direction: String, packetName: String, details: String = "") {
         val msg = if (details.isNotEmpty()) "[$direction] $packetName - $details" else "[$direction] $packetName"
         log(LogLevel.PACKET, "Packet", msg)
+    }
+
+    fun tunnel(message: String) = log(LogLevel.TUNNEL, "TUNNEL", message)
+    fun relay(message: String) = log(LogLevel.RELAY, "RELAY", message)
+    fun upstream(message: String) = log(LogLevel.UPSTREAM, "UPSTREAM", message)
+    fun diag(message: String) = log(LogLevel.DIAG, "DIAG", message)
+    fun feedback(message: String) = log(LogLevel.FEEDBACK, "USER_FEEDBACK", message)
+
+    fun buildComprehensiveReport(diagnosticSummary: String = "", userFeedback: String = ""): String {
+        return buildString {
+            append("====================================================\n")
+            append("      AG CLIENT v2.9.0-beta.1 CONNECTION REPORT     \n")
+            append("====================================================\n")
+            append("Timestamp: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
+            append("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (Android ${android.os.Build.VERSION.RELEASE}, API ${android.os.Build.VERSION.SDK_INT})\n")
+            if (userFeedback.isNotBlank()) {
+                append("User Feedback: $userFeedback\n")
+            }
+            append("----------------------------------------------------\n")
+            if (diagnosticSummary.isNotBlank()) {
+                append("DIAGNOSTICS SUMMARY:\n")
+                append(diagnosticSummary)
+                append("\n----------------------------------------------------\n")
+            }
+            append("RECENT SYSTEM & PACKET LOGS:\n")
+            append(getAllLogsText())
+            append("\n====================================================\n")
+        }
     }
 }

@@ -14,6 +14,7 @@ import androidx.core.app.ServiceCompat
 import com.aayaan.agclient.MainActivity
 import com.aayaan.agclient.R
 import com.aayaan.agclient.utils.Logger
+import com.aayaan.agclient.utils.RakNetInspector
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -185,12 +186,15 @@ class AGVirtualSandboxService : VpnService() {
                     val payloadLength = length - payloadOffset
                     if (payloadLength <= 0) continue
 
+                    val packetDesc = RakNetInspector.inspect(buffer, payloadOffset, payloadLength)
+                    Logger.tunnel("Minecraft [10.0.0.2:$srcPort] -> 10.0.0.1:$dstPort | $packetDesc ($payloadLength B)")
+
                     // Dedicated multiplexed route per clientPort
                     val route = getOrCreateRoute(srcIp, srcPort, dstPort, dstIp, outputStream)
                     try {
                         val packet = DatagramPacket(buffer, payloadOffset, payloadLength, proxyTarget)
                         route.socket.send(packet)
-                        Logger.d("VirtualSandbox", "Relayed $payloadLength bytes: 10.0.0.2:$srcPort -> 127.0.0.1:$targetPort")
+                        Logger.relay("Forwarded to 127.0.0.1:$targetPort via local port ${route.socket.localPort}")
                     } catch (e: Exception) {
                         Logger.w("VirtualSandbox", "Failed to forward packet to proxy 127.0.0.1:$targetPort: ${e.message}")
                     }
@@ -237,7 +241,8 @@ class AGVirtualSandboxService : VpnService() {
 
                         val replyLen = replyPacket.length
                         if (replyLen > 0) {
-                            Logger.d("VirtualSandbox", "Proxy replied $replyLen bytes, routing to 10.0.0.2:$clientPort")
+                            val replyDesc = RakNetInspector.inspect(replyPacket.data, replyPacket.offset, replyLen)
+                            Logger.relay("Proxy replied | $replyDesc ($replyLen B) -> writing to tun0 [10.0.0.1:$serverPort -> 10.0.0.2:$clientPort]")
                             val ipPacket = buildUdpIpPacket(
                                 srcIp = serverIp, // 10.0.0.1 (the virtual server)
                                 dstIp = clientIp, // Minecraft client IP

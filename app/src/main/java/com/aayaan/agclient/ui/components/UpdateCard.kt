@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -52,17 +53,38 @@ fun UpdateCard(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = DarkBackground,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Every 30m",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    FilledTonalButton(
+                        onClick = onCheckUpdate,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = DarkCard),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Check Now",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Check Now", color = NeonCyan, style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = DarkBackground,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DarkCardBorder)
+                    ) {
+                        Text(
+                            text = "Rate-Limit Free",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AccentGreen,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -70,12 +92,12 @@ fun UpdateCard(
                 is UpdateState.Idle -> {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Version: 2.8.1 (Active)",
+                            text = "Version: 2.9.0-beta.1 (Beta 1 Connection Test)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Background auto-check runs every 30 minutes from app open.",
+                            text = "Unlimited manual check button enabled + automatic background checks.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )

@@ -62,7 +62,8 @@ fun DashboardScreen(
         UpdateCard(
             updateState = updateState,
             onDownloadUpdate = { url -> autoUpdater.startDownload(url) },
-            onInstallApk = { apk -> autoUpdater.installApk(apk) }
+            onInstallApk = { apk -> autoUpdater.installApk(apk) },
+            onCheckUpdate = { autoUpdater.checkForUpdates(silent = false, force = true) }
         )
 
         ServerConfigCard(

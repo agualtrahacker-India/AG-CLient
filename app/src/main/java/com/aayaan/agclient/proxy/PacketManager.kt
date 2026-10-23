@@ -22,7 +22,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * AG Client Man-in-the-Middle (MitM) Packet Manager & Encryption Engine (v2.8.1).
+ * AG Client Man-in-the-Middle (MitM) Packet Manager & Encryption Engine (v2.9.0-beta.1).
  *
  * Responsibilities:
  * 1. Intercepts all incoming client packets (Minecraft -> Proxy) and server packets (Server -> Proxy).

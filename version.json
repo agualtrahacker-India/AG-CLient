@@ -1,0 +1,6 @@
+{
+  "version": "2.9.0-beta.1",
+  "versionCode": 14,
+  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.0-beta.1/AG-Client-v2.9.0-beta.1-release.apk",
+  "releaseNotes": "v2.9.0-beta.1: Advanced Real-Time Packet Diagnostics, Rate-Limit Free Auto-Updater, Interactive Connection Tester, and RakNet Packet Inspector on connection-test branch."
+}

@@ -2,11 +2,11 @@ name: AG Client Build & Release
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "connection-test" ]
     tags:
       - "v*"
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "connection-test" ]
   workflow_dispatch:
 
 permissions:
@@ -59,27 +59,26 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AG-Client-v2.8.1-release
+          name: AG-Client-v2.9.0-beta.1-release
           path: app/build/outputs/apk/release/*.apk
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/connection-test'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.8.1
-          name: "AG Client v2.8.1 - Standalone Minecraft Bedrock Proxy"
+          tag_name: v2.9.0-beta.1
+          name: "AG Client v2.9.0-beta.1 - Connection Test & Advanced Diagnostics"
           body: |
-            ### AG Client (v2.8.1)
+            ### AG Client (v2.9.0-beta.1 - Connection Test)
             Standalone Minecraft Bedrock MITM Proxy for Android.
             
-            #### What's New in v2.8.1:
-            - **Fixed "Connecting to external server" Hang:** Restored clean sandbox VPN routing by disallowing AG Client package instead of restricting allowed packages, guaranteeing all Minecraft editions, clones, and network threads route to `10.0.0.1`.
-            - **Strict Proxy Port 19133 Pinning & Self-Healing:** Prevented silent port shifting to 19134/19135; normalized any existing configs back to 19133 with automatic 3x retry on transient TIME_WAIT.
-            - **Startup Race Condition Shielding:** Synchronous atomic guard prevents concurrent service invocations from terminating listener sockets mid-startup.
-            - **MitM Packet Manager & Full Key Exchange Engine:** Full bi-directional packet interceptor with dynamic ECDH (secp384r1/secp256r1) key derivation and AES cipher activation for both Minecraft and remote servers.
-            - **End-to-End Interception & Encryption Bridge:** Eliminates multiplayer connection timeouts and "Connection failed" drops by terminating encryption handshakes on both legs.
-            - **One-Tap Console Log Copying & Diagnostics:** Instant log copy to clipboard directly from the console interface.
-            - **70+ In-Game Commands & Utilities:** Complete combat, movement, visual, and world utility suite.
+            #### What's New in v2.9.0-beta.1:
+            - **Branch connection-test & Dedicated Beta 1 Diagnostics Build:** Specifically isolated test environment to diagnose Android sandbox and remote server connectivity.
+            - **RakNet Packet Inspector & Live Hex Telemetry:** Real-time decoding of RakNet datagrams (0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x13, 0x19, 0x1c) on tun0 and relay sockets.
+            - **Integrated In-App Connectivity Test Suite:** "Run Network Diagnostic" tests local proxy port 127.0.0.1:19133, DNS lookup latency, and direct RakNet UDP ping to target server.
+            - **Interactive User Response Feedback & Diagnostic Bundle:** One-tap feedback reporting ("Working", "Stuck: External Server", "Stuck: Multiplayer", "Timed Out") and comprehensive report copying.
+            - **Unlimited Rate-Limit Free Auto-Updater:** Replaced rate-limited GitHub REST API checks with GitHub Web Redirect and Fastly CDN version.json checks for unlimited checks.
+            - **Non-blocking Upstream Dispatcher:** Upstream DNS and bootstrap connection runs on IO coroutine dispatcher, preventing Netty thread stalls.
           files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

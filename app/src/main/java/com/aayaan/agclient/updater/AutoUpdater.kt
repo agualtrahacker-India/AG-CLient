@@ -47,9 +47,9 @@ class AutoUpdater(private val context: Context) {
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     val currentVersion: String = try {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.8.1"
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.9.0-beta.1"
     } catch (_: Exception) {
-        "2.8.1"
+        "2.9.0-beta.1"
     }
 
     companion object {
@@ -93,70 +93,123 @@ class AutoUpdater(private val context: Context) {
                 val elapsed = now - lastCheck
 
                 if (!force && lastCheck != 0L && elapsed < CHECK_INTERVAL_MS) {
-                    Logger.d("AutoUpdater", "Skipping update check - last check was ${elapsed / 1000}s ago (cooldown 30m).")
+                    Logger.d("AutoUpdater", "Skipping background update check - last check was ${elapsed / 1000}s ago.")
                     return@launch
                 }
                 prefs.edit().putLong(PREF_LAST_CHECK, now).apply()
 
                 if (!silent) _updateState.value = UpdateState.Checking
-                Logger.i("AutoUpdater", "Checking GitHub for updates at $API_LATEST_RELEASE...")
+                Logger.i("AutoUpdater", "Checking GitHub for updates (rate-limit free mode)...")
 
-                val url = URL(API_LATEST_RELEASE)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
+                var foundVersion: String? = null
+                var foundDownloadUrl: String? = null
+                var foundReleaseNotes = ""
+                var foundApkSize = 0L
 
-                val code = conn.responseCode
-                if (code == 200) {
-                    val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val json = JsonParser.parseString(body).asJsonObject
-
-                    val tagName = json.get("tag_name").asString
-                    val cleanTag = tagName.removePrefix("v").trim()
-                    val releaseNotes = if (json.has("body") && !json.get("body").isJsonNull) json.get("body").asString else ""
-
-                    // Find APK asset
-                    var downloadUrl: String? = null
-                    var apkSize: Long = 0L
-
-                    if (json.has("assets") && json.get("assets").isJsonArray) {
-                        for (asset in json.getAsJsonArray("assets")) {
-                            val assetObj = asset.asJsonObject
-                            val name = assetObj.get("name").asString
-                            if (name.endsWith(".apk", ignoreCase = true)) {
-                                downloadUrl = assetObj.get("browser_download_url").asString
-                                apkSize = if (assetObj.has("size")) assetObj.get("size").asLong else 0L
+                // 1. Unlimited Strategy 1: GitHub Raw Content (Fastly CDN, 0 rate limit)
+                val rawUrls = listOf(
+                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/connection-test/version.json",
+                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/version.json"
+                )
+                for (rawUrl in rawUrls) {
+                    try {
+                        val conn = URL(rawUrl).openConnection() as HttpURLConnection
+                        conn.connectTimeout = 4000
+                        conn.readTimeout = 4000
+                        conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
+                        if (conn.responseCode == 200) {
+                            val body = conn.inputStream.bufferedReader().use { it.readText() }
+                            val json = JsonParser.parseString(body).asJsonObject
+                            if (json.has("version")) {
+                                foundVersion = json.get("version").asString.removePrefix("v").trim()
+                                foundDownloadUrl = if (json.has("downloadUrl")) json.get("downloadUrl").asString else null
+                                foundReleaseNotes = if (json.has("releaseNotes")) json.get("releaseNotes").asString else ""
+                                Logger.i("AutoUpdater", "Discovered latest release via Fastly CDN version.json: v$foundVersion")
                                 break
                             }
                         }
-                    }
+                    } catch (_: Exception) {}
+                }
 
-                    if (isNewerVersion(cleanTag, currentVersion) && downloadUrl != null) {
+                // 2. Unlimited Strategy 2: GitHub Releases Web Redirect (0 rate limit)
+                if (foundVersion == null) {
+                    try {
+                        val webUrl = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+                        val conn = URL(webUrl).openConnection() as HttpURLConnection
+                        conn.instanceFollowRedirects = false
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 AG-Client-Android")
+                        val responseCode = conn.responseCode
+                        if (responseCode == 302 || responseCode == 301) {
+                            val location = conn.getHeaderField("Location")
+                            if (!location.isNullOrBlank() && location.contains("/releases/tag/")) {
+                                val tag = location.substringAfterLast("/releases/tag/").trim()
+                                val cleanTag = tag.removePrefix("v").trim()
+                                foundVersion = cleanTag
+                                foundDownloadUrl = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/AG-Client-$tag-release.apk"
+                                foundReleaseNotes = "New release $tag is available on GitHub."
+                                Logger.i("AutoUpdater", "Discovered latest release via GitHub web redirect: $tag")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.d("AutoUpdater", "Web redirect check: ${e.message}")
+                    }
+                }
+
+                // 3. Fallback: GitHub REST API
+                if (foundVersion == null) {
+                    try {
+                        val conn = URL(API_LATEST_RELEASE).openConnection() as HttpURLConnection
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                        conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
+                        if (conn.responseCode == 200) {
+                            val body = conn.inputStream.bufferedReader().use { it.readText() }
+                            val json = JsonParser.parseString(body).asJsonObject
+                            val tagName = json.get("tag_name").asString
+                            foundVersion = tagName.removePrefix("v").trim()
+                            foundReleaseNotes = if (json.has("body") && !json.get("body").isJsonNull) json.get("body").asString else ""
+                            if (json.has("assets") && json.get("assets").isJsonArray) {
+                                for (asset in json.getAsJsonArray("assets")) {
+                                    val assetObj = asset.asJsonObject
+                                    val name = assetObj.get("name").asString
+                                    if (name.endsWith(".apk", ignoreCase = true)) {
+                                        foundDownloadUrl = assetObj.get("browser_download_url").asString
+                                        foundApkSize = if (assetObj.has("size")) assetObj.get("size").asLong else 0L
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.d("AutoUpdater", "REST API check: ${e.message}")
+                    }
+                }
+
+                // Evaluate Result
+                val targetVer = foundVersion
+                if (targetVer != null) {
+                    val finalDownloadUrl = foundDownloadUrl ?: "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+                    if (isNewerVersion(targetVer, currentVersion)) {
                         _updateState.value = UpdateState.UpdateAvailable(
-                            version = cleanTag,
-                            releaseNotes = releaseNotes,
-                            downloadUrl = downloadUrl,
-                            apkSize = apkSize
+                            version = targetVer,
+                            releaseNotes = foundReleaseNotes,
+                            downloadUrl = finalDownloadUrl,
+                            apkSize = foundApkSize
                         )
-                        Logger.i("AutoUpdater", "New update available: $cleanTag (current: $currentVersion)")
-                        sendUpdateNotification(cleanTag)
+                        Logger.i("AutoUpdater", "New update available: v$targetVer (current: v$currentVersion)")
+                        sendUpdateNotification(targetVer)
                     } else {
                         _updateState.value = UpdateState.UpToDate(currentVersion)
-                        Logger.i("AutoUpdater", "AG Client is up to date: $currentVersion")
+                        Logger.i("AutoUpdater", "AG Client is up to date: v$currentVersion")
                     }
-                } else if (code == 404) {
-                    _updateState.value = UpdateState.UpToDate(currentVersion)
-                    Logger.i("AutoUpdater", "No releases published yet on GitHub. Up to date.")
-                } else if (code == 403) {
-                    Logger.w("AutoUpdater", "GitHub API rate limit reached. Next auto-check will run in 30 minutes.")
                 } else {
-                    val err = "HTTP $code from GitHub releases API"
-                    Logger.w("AutoUpdater", err)
-                    if (!silent) _updateState.value = UpdateState.Error(err)
+                    _updateState.value = UpdateState.UpToDate(currentVersion)
+                    Logger.i("AutoUpdater", "Up to date (v$currentVersion). No new release found.")
                 }
+
             } catch (e: Exception) {
                 Logger.e("AutoUpdater", "Failed to check for updates", e)
                 if (!silent) _updateState.value = UpdateState.Error("Update check failed: ${e.message}")

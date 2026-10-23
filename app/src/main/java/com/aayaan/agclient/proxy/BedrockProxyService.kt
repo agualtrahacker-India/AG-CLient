@@ -176,7 +176,7 @@ class BedrockProxyService : Service() {
 
                         if (config.localBindPort != port) {
                             config.localBindPort = port
-                            app.configManager.saveConfig(config)
+                            app.configManager.saveConfig("default")
                             Logger.i("ProxyService", "Switched localBindPort to available port: $port")
                         }
 

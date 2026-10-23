@@ -30,6 +30,9 @@ import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockServerInitiali
 import java.net.InetSocketAddress
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
@@ -205,6 +208,10 @@ class BedrockProxyService : Service() {
                 // Broadcast LAN discovery Pong so AG Client appears directly in Minecraft Friends tab
                 startLanBroadcaster()
 
+                // Dual Transport Mode: Support modern NetherNet (WebRTC/Port 7551 & TCP signaling) alongside classic RakNet
+                startNetherNetBroadcaster()
+                startCompanionTcpListener(bindPort)
+
             } catch (t: Throwable) {
                 Logger.e("ProxyService", "Failed to start Bedrock proxy", t)
                 _serviceState.value = ServiceState.ERROR
@@ -295,10 +302,90 @@ class BedrockProxyService : Service() {
         }
     }
 
+    private var netherNetBroadcastJob: Job? = null
+    private var netherNetTcpJob: Job? = null
+    private var companionTcpServer: ServerSocket? = null
+
+    private fun startNetherNetBroadcaster() {
+        netherNetBroadcastJob?.cancel()
+        netherNetBroadcastJob = scope.launch(Dispatchers.IO) {
+            val socket = try {
+                DatagramSocket(null).apply {
+                    reuseAddress = true
+                    broadcast = true
+                    bind(InetSocketAddress("0.0.0.0", 7551))
+                }
+            } catch (e: Exception) {
+                Logger.d("NetherNet", "NetherNet port 7551 listener notice: ${e.message}")
+                return@launch
+            }
+
+            Logger.i("NetherNet", "NetherNet LAN discovery listener active on UDP port 7551.")
+            val buf = ByteArray(2048)
+            val packet = DatagramPacket(buf, buf.size)
+
+            while (isActive) {
+                try {
+                    socket.receive(packet)
+                    val len = packet.length
+                    if (len > 0) {
+                        Logger.tunnel("NetherNet Discovery (Port 7551) packet from ${packet.socketAddress} ($len B)")
+                    }
+                } catch (_: Exception) {
+                    break
+                }
+            }
+            try { socket.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun startCompanionTcpListener(bindPort: Int) {
+        netherNetTcpJob?.cancel()
+        netherNetTcpJob = scope.launch(Dispatchers.IO) {
+            val server = try {
+                ServerSocket(bindPort, 10, InetAddress.getByName("0.0.0.0"))
+            } catch (e: Exception) {
+                Logger.d("NetherNetTCP", "Companion TCP listener notice: ${e.message}")
+                return@launch
+            }
+            companionTcpServer = server
+            Logger.i("NetherNetTCP", "Companion TCP listener active on 0.0.0.0:$bindPort (Dual NetherNet/RakNet mode).")
+
+            while (isActive && !server.isClosed) {
+                val clientSocket = try {
+                    server.accept()
+                } catch (_: Exception) { break }
+
+                scope.launch(Dispatchers.IO) {
+                    val remote = clientSocket.remoteSocketAddress
+                    Logger.i("NetherNetTCP", "Inbound NetherNet TCP signaling connection from $remote")
+                    try {
+                        val input = clientSocket.getInputStream()
+                        val buf = ByteArray(4096)
+                        val n = input.read(buf)
+                        if (n > 0) {
+                            val hexPrefix = buf.take(n.coerceAtMost(32)).joinToString(" ") { "%02X".format(it) }
+                            Logger.i("NetherNetTCP", "Received TCP signaling from $remote ($n B): $hexPrefix")
+                        }
+                    } catch (_: Exception) {}
+                    finally {
+                        try { clientSocket.close() } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+    }
+
     private fun stopProxy() {
         try {
             lanBroadcastJob?.cancel()
             lanBroadcastJob = null
+            netherNetBroadcastJob?.cancel()
+            netherNetBroadcastJob = null
+            netherNetTcpJob?.cancel()
+            netherNetTcpJob = null
+            try { companionTcpServer?.close() } catch (_: Exception) {}
+            companionTcpServer = null
             for ((_, session) in activeSessions) {
                 session.close()
             }

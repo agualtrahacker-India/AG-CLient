@@ -77,6 +77,7 @@ jobs:
             - **RakNet Packet Inspector & Live Hex Telemetry:** Real-time decoding of RakNet datagrams (0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x13, 0x19, 0x1c) on tun0 and relay sockets.
             - **Integrated In-App Connectivity Test Suite:** "Run Network Diagnostic" tests local proxy port 127.0.0.1:19133, DNS lookup latency, and direct RakNet UDP ping to target server.
             - **Interactive User Response Feedback & Diagnostic Bundle:** One-tap feedback reporting ("Working", "Stuck: External Server", "Stuck: Multiplayer", "Timed Out") and comprehensive report copying.
+            - **Dual Transport Testing (RakNet & NetherNet WebRTC/TCP):** Added NetherNet LAN listener on UDP port 7551, companion NetherNet TCP signaling listener, and STUN/DTLS packet telemetry alongside classic RakNet.
             - **Unlimited Rate-Limit Free Auto-Updater:** Replaced rate-limited GitHub REST API checks with GitHub Web Redirect and Fastly CDN version.json checks for unlimited checks.
             - **Non-blocking Upstream Dispatcher:** Upstream DNS and bootstrap connection runs on IO coroutine dispatcher, preventing Netty thread stalls.
           files: app/build/outputs/apk/release/*.apk

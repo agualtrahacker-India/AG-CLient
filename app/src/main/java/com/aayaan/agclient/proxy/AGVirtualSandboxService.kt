@@ -172,6 +172,13 @@ class AGVirtualSandboxService : VpnService() {
                     if (ihl < 20 || length < ihl + 8) continue
 
                     val protocol = buffer[9].toInt() and 0xFF
+                    if (protocol == 6) {
+                        // TCP Protocol (e.g. Modern NetherNet signaling)
+                        val srcPort = ((buffer[ihl].toInt() and 0xFF) shl 8) or (buffer[ihl + 1].toInt() and 0xFF)
+                        val dstPort = ((buffer[ihl + 2].toInt() and 0xFF) shl 8) or (buffer[ihl + 3].toInt() and 0xFF)
+                        Logger.tunnel("Minecraft [10.0.0.2:$srcPort] -> 10.0.0.1:$dstPort | [NETHERNET_TCP_SIGNALING] (len=$length B)")
+                        continue
+                    }
                     if (protocol != 17) continue // UDP only
 
                     // Extract IPs: Bytes 12..15 = Source IP (Minecraft), Bytes 16..19 = Dest IP (10.0.0.1)
@@ -186,7 +193,7 @@ class AGVirtualSandboxService : VpnService() {
                     val payloadLength = length - payloadOffset
                     if (payloadLength <= 0) continue
 
-                    val packetDesc = RakNetInspector.inspect(buffer, payloadOffset, payloadLength)
+                    val packetDesc = RakNetInspector.inspect(buffer, payloadOffset, payloadLength, dstPort)
                     Logger.tunnel("Minecraft [10.0.0.2:$srcPort] -> 10.0.0.1:$dstPort | $packetDesc ($payloadLength B)")
 
                     // Dedicated multiplexed route per clientPort
@@ -241,7 +248,7 @@ class AGVirtualSandboxService : VpnService() {
 
                         val replyLen = replyPacket.length
                         if (replyLen > 0) {
-                            val replyDesc = RakNetInspector.inspect(replyPacket.data, replyPacket.offset, replyLen)
+                            val replyDesc = RakNetInspector.inspect(replyPacket.data, replyPacket.offset, replyLen, serverPort)
                             Logger.relay("Proxy replied | $replyDesc ($replyLen B) -> writing to tun0 [10.0.0.1:$serverPort -> 10.0.0.2:$clientPort]")
                             val ipPacket = buildUdpIpPacket(
                                 srcIp = serverIp, // 10.0.0.1 (the virtual server)

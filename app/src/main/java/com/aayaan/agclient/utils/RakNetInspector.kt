@@ -1,18 +1,50 @@
 package com.aayaan.agclient.utils
 
 /**
- * High-performance RakNet & Bedrock packet inspector for real-time telemetry and diagnostics.
- * Inspects raw UDP datagrams passing through tun0 and the proxy relay to give clear human-readable logs.
+ * High-performance RakNet & NetherNet packet inspector for real-time telemetry and diagnostics.
+ * Inspects raw UDP datagrams passing through tun0 and the proxy relay to give clear human-readable logs
+ * for BOTH legacy RakNet and modern WebRTC/NetherNet transports.
  */
 object RakNetInspector {
 
-    fun inspect(data: ByteArray, offset: Int, length: Int): String {
+    fun inspect(data: ByteArray, offset: Int, length: Int, dstPort: Int = 19133): String {
         if (length <= 0 || offset + length > data.size) return "EMPTY_PACKET"
 
-        val packetId = data[offset].toInt() and 0xFF
-        val hexId = "0x" + packetId.toString(16).padStart(2, '0').uppercase()
+        // 1. NetherNet LAN Discovery on Port 7551
+        if (dstPort == 7551) {
+            return "NETHERNET_DISCOVERY_BROADCAST (Port 7551, $length B)"
+        }
 
-        return when (packetId) {
+        // 2. Check for WebRTC STUN Binding (NetherNet Transport)
+        if (length >= 20 && isStunMessage(data, offset, length)) {
+            val msgType = ((data[offset].toInt() and 0xFF) shl 8) or (data[offset + 1].toInt() and 0xFF)
+            return when (msgType) {
+                0x0001 -> "NETHERNET_STUN_BINDING_REQUEST (WebRTC ICE, $length B)"
+                0x0101 -> "NETHERNET_STUN_BINDING_RESPONSE (WebRTC ICE, $length B)"
+                0x0111 -> "NETHERNET_STUN_BINDING_ERROR (WebRTC ICE, $length B)"
+                else -> "NETHERNET_STUN_MESSAGE (type=0x${msgType.toString(16)}, $length B)"
+            }
+        }
+
+        // 3. Check for DTLS Handshake / Security Layer (NetherNet Cryptographic Handshake)
+        val firstByte = data[offset].toInt() and 0xFF
+        if (length >= 13 && firstByte in 20..23) {
+            val major = data[offset + 1].toInt() and 0xFF
+            if (major == 3 || major == 1 || major == 254 || major == 253) {
+                return when (firstByte) {
+                    20 -> "NETHERNET_DTLS_CHANGE_CIPHER_SPEC ($length B)"
+                    21 -> "NETHERNET_DTLS_ALERT ($length B)"
+                    22 -> "NETHERNET_DTLS_HANDSHAKE ($length B)"
+                    23 -> "NETHERNET_DTLS_APPLICATION_DATA ($length B)"
+                    else -> "NETHERNET_DTLS_RECORD ($length B)"
+                }
+            }
+        }
+
+        // 4. Classic RakNet Protocol Parsing
+        val hexId = "0x" + firstByte.toString(16).padStart(2, '0').uppercase()
+
+        return when (firstByte) {
             0x05 -> {
                 val proto = if (length >= 18) (data[offset + 17].toInt() and 0xFF).toString() else "unknown"
                 "$hexId RAK_OPEN_CONN_REQ_1 (mtu=$length, proto=$proto)"
@@ -43,13 +75,19 @@ object RakNetInspector {
                 "$hexId RAK_DATA_FRAME [$subDesc]"
             }
             0xfe -> "$hexId BEDROCK_BATCH_PACKET"
-            else -> "$hexId UNKNOWN_UDP_PACKET"
+            else -> "$hexId UNKNOWN_UDP_PACKET ($length B)"
         }
     }
 
+    private fun isStunMessage(data: ByteArray, offset: Int, length: Int): Boolean {
+        // STUN Magic Cookie at offset 4..7 is 0x2112A442
+        return (data[offset + 4].toInt() and 0xFF == 0x21) &&
+                (data[offset + 5].toInt() and 0xFF == 0x12) &&
+                (data[offset + 6].toInt() and 0xFF == 0xA4) &&
+                (data[offset + 7].toInt() and 0xFF == 0x42)
+    }
+
     private fun inspectDataFrame(data: ByteArray, offset: Int, length: Int): String {
-        // RakNet Data Frame Header is typically 4 bytes (header + sequence number)
-        // Then reliability header (1-4 bytes). Bedrock batches begin with 0xfe or zlib header 0x78
         if (length < 8) return "len=$length"
 
         for (i in (offset + 4)..(offset + 12).coerceAtMost(offset + length - 1)) {

@@ -16,8 +16,6 @@ import com.aayaan.agclient.R
 import com.aayaan.agclient.utils.Logger
 import io.netty.bootstrap.ServerBootstrap
 import io.netty.channel.Channel
-import io.netty.channel.ChannelHandlerContext
-import io.netty.channel.ChannelInboundHandlerAdapter
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
 import kotlinx.coroutines.*
@@ -157,23 +155,9 @@ class BedrockProxyService : Service() {
                             .option(RakChannelOption.RAK_ADVERTISEMENT, pong.toByteBuf().copy())
                             .option(RakChannelOption.RAK_HANDLE_PING, true)
                             .childHandler(object : BedrockServerInitializer() {
-                                override fun initChannel(ch: Channel) {
-                                    super.initChannel(ch)
-                                    ch.pipeline().addLast("proxy-exception-logger", object : ChannelInboundHandlerAdapter() {
-                                        override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-                                            Logger.e("NettyPipeline", "Pipeline exception on ${ctx.channel().remoteAddress()}: ${cause::class.java.simpleName}: ${cause.message}", cause)
-                                            super.exceptionCaught(ctx, cause)
-                                        }
-                                    })
-                                }
-
                                 override fun initSession(session: BedrockServerSession) {
                                     val remoteAddress = session.socketAddress as? InetSocketAddress ?: return
                                     Logger.i("ProxyService", "Local Minecraft client connected: $remoteAddress")
-
-                                    session.addDisconnectHandler { reason ->
-                                        Logger.w("ProxyService", "Local session disconnected: $reason")
-                                    }
 
                                     // Assign initial codec so session can serialize/deserialize packets without throwing
                                     val initialCodec = BedrockCodecFinder.getDefaultCodec()

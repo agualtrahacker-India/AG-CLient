@@ -9,9 +9,6 @@ import com.aayaan.agclient.modules.ModuleManager
 import com.aayaan.agclient.state.WorldStateTracker
 import com.aayaan.agclient.utils.Logger
 import io.netty.bootstrap.Bootstrap
-import io.netty.channel.Channel
-import io.netty.channel.ChannelHandlerContext
-import io.netty.channel.ChannelInboundHandlerAdapter
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
 import org.cloudburstmc.netty.channel.raknet.RakChannelFactory
@@ -167,16 +164,6 @@ class ProxySession(
                 .option(io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS, 25000)
                 .option(org.cloudburstmc.netty.channel.raknet.config.RakChannelOption.RAK_PROTOCOL_VERSION, 11)
                 .handler(object : BedrockClientInitializer() {
-                    override fun initChannel(ch: Channel) {
-                        super.initChannel(ch)
-                        ch.pipeline().addLast("upstream-exception-logger", object : ChannelInboundHandlerAdapter() {
-                            override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-                                Logger.e("NettyUpstream", "Upstream Netty pipeline exception: ${cause::class.java.simpleName}: ${cause.message}", cause)
-                                super.exceptionCaught(ctx, cause)
-                            }
-                        })
-                    }
-
                     override fun initSession(session: BedrockClientSession) {
                         pendingSession = session
                     }

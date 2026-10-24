@@ -14,3 +14,4 @@ val TextSecondary = Color(0xFF8B949E)
 val AccentRed = Color(0xFFFF5252)
 val AccentGreen = Color(0xFF00E676)
 val AccentAmber = Color(0xFFFFD600)
+val AccentYellow = AccentAmber

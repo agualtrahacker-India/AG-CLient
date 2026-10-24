@@ -188,17 +188,17 @@ fun UpdateCard(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Security, contentDescription = null, tint = AccentYellow)
+                                Icon(Icons.Default.Security, contentDescription = null, tint = AccentAmber)
                                 Text(
                                     text = "Android permission required: 'Install unknown apps'",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = AccentYellow
+                                    color = AccentAmber
                                 )
                             }
                             Button(
                                 onClick = onOpenSettings,
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentYellow)
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentAmber)
                             ) {
                                 Text("Allow Unknown Apps in Settings", color = DarkBackground)
                             }

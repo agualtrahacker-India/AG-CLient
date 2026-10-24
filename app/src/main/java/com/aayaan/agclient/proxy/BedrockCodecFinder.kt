@@ -13,6 +13,9 @@ object BedrockCodecFinder {
     private var defaultCodec: BedrockCodec? = null
 
     private val KNOWN_CODEC_CLASSES = listOf(
+        "org.cloudburstmc.protocol.bedrock.codec.v2194.Bedrock_v2194",
+        "org.cloudburstmc.protocol.bedrock.codec.v2193.Bedrock_v2193", // 1.26.50
+        "org.cloudburstmc.protocol.bedrock.codec.v2192.Bedrock_v2192",
         "org.cloudburstmc.protocol.bedrock.codec.v786.Bedrock_v786", // 1.21.70
         "org.cloudburstmc.protocol.bedrock.codec.v776.Bedrock_v776", // 1.21.60
         "org.cloudburstmc.protocol.bedrock.codec.v766.Bedrock_v766", // 1.21.50
@@ -58,8 +61,28 @@ object BedrockCodecFinder {
         // 1. Exact match
         codecCache[protocolVersion]?.let { return it }
 
-        // 2. Nearest compatible or default
-        return defaultCodec
+        val base = defaultCodec ?: return null
+        if (protocolVersion <= 0) return base
+
+        // 2. Synthesize dynamic codec for client's specific protocol version (e.g. 2193)
+        try {
+            val toBuilderMethod = base.javaClass.getMethod("toBuilder")
+            val builder = toBuilderMethod.invoke(base)
+            val protoMethod = builder.javaClass.getMethod("protocolVersion", Int::class.javaPrimitiveType)
+            protoMethod.invoke(builder, protocolVersion)
+            val buildMethod = builder.javaClass.getMethod("build")
+            val dynamicCodec = buildMethod.invoke(builder) as? BedrockCodec
+            if (dynamicCodec != null) {
+                codecCache[protocolVersion] = dynamicCodec
+                Logger.i("BedrockCodecFinder", "Synthesized dynamic BedrockCodec for protocol $protocolVersion (derived from base ${base.protocolVersion})")
+                return dynamicCodec
+            }
+        } catch (e: Throwable) {
+            Logger.d("BedrockCodecFinder", "Dynamic codec synthesis fallback: ${e.message}")
+        }
+
+        // 3. Fallback to default
+        return base
     }
 
     fun getDefaultCodec(): BedrockCodec? = defaultCodec

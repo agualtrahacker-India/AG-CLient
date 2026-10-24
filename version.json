@@ -1,6 +1,6 @@
 {
-  "version": "2.9.7",
-  "versionCode": 17,
-  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.7/AG-Client-v2.9.7-release.apk",
-  "releaseNotes": "v2.9.7: Resolved protocol version 2193 mismatch via dynamic BedrockCodec synthesis, official Xbox Live auth with exact skin/model preservation, and seamless upstream handshake synchronization."
+  "version": "2.9.8",
+  "versionCode": 18,
+  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.8/AG-Client-v2.9.8-release.apk",
+  "releaseNotes": "v2.9.8: Persistent device KeyPair architecture, automatic 90-day background token tracking, dedicated in-console Auth Diagnostic probe, and protocol 2193 codec auto-synthesis."
 }

@@ -40,6 +40,7 @@ fun PacketConsoleView(
     val coroutineScope = rememberCoroutineScope()
 
     var isRunningDiag by remember { mutableStateOf(false) }
+    var isRunningAuthDiag by remember { mutableStateOf(false) }
     var lastDiagSummary by remember { mutableStateOf("") }
     var selectedFeedback by remember { mutableStateOf("") }
 
@@ -134,10 +135,13 @@ fun PacketConsoleView(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // 1. Network Diagnostic
                     Button(
                         onClick = {
                             if (isRunningDiag) return@Button
@@ -150,7 +154,7 @@ fun PacketConsoleView(
                                 lastDiagSummary = result.summary
                                 Logger.diag("Diagnostic Results:\n${result.summary}")
                                 isRunningDiag = false
-                                Toast.makeText(context, "Diagnostics complete!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Network diagnostics complete!", Toast.LENGTH_SHORT).show()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isRunningDiag) DarkCard else ElectricPurple),
@@ -166,6 +170,37 @@ fun PacketConsoleView(
                             Icon(Icons.Default.Speed, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Run Network Diagnostic", color = TextPrimary, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+
+                    // 2. Auth Diagnostic
+                    Button(
+                        onClick = {
+                            if (isRunningAuthDiag) return@Button
+                            isRunningAuthDiag = true
+                            coroutineScope.launch {
+                                Logger.diag("Running Microsoft & Xbox Auth Diagnostics...")
+                                val app = context.applicationContext as? AGClientApplication
+                                val authMgr = app?.xboxAuthManager
+                                val result = authMgr?.runAuthDiagnostic() ?: "AuthManager not available"
+                                Logger.diag(result)
+                                isRunningAuthDiag = false
+                                Toast.makeText(context, "Auth diagnostics complete!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isRunningAuthDiag) DarkCard else NeonCyan),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp),
+                        enabled = !isRunningAuthDiag
+                    ) {
+                        if (isRunningAuthDiag) {
+                            CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Testing Auth...", color = DarkBackground, style = MaterialTheme.typography.labelSmall)
+                        } else {
+                            Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = DarkBackground, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Run Auth Diagnostic", color = DarkBackground, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
 

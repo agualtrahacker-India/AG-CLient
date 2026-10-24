@@ -89,7 +89,7 @@ object Logger {
     fun buildComprehensiveReport(diagnosticSummary: String = "", userFeedback: String = ""): String {
         return buildString {
             append("====================================================\n")
-            append("      AG CLIENT v2.9.7 CONNECTION REPORT     \n")
+            append("      AG CLIENT v2.9.8 CONNECTION REPORT     \n")
             append("====================================================\n")
             append("Timestamp: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
             append("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (Android ${android.os.Build.VERSION.RELEASE}, API ${android.os.Build.VERSION.SDK_INT})\n")

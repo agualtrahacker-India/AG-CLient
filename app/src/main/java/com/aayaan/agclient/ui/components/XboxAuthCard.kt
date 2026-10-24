@@ -28,6 +28,7 @@ fun XboxAuthCard(
     authState: XboxAuthState? = null,
     currentIp: String = "10.0.0.1",
     localPort: Int = 19133,
+    daysRemaining: Int = 90,
     onLoginClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {},
     onCancelClick: () -> Unit = {},
@@ -166,7 +167,7 @@ fun XboxAuthCard(
                             }
 
                             Text(
-                                text = "• Official Mojang signature active for The Hive & featured servers.\n• Your exact custom skin, cape, and 3D model from the Minecraft app are automatically preserved and forwarded.",
+                                text = "• 90-Day session active ($daysRemaining days remaining with auto-refresh).\n• Official Mojang signature active for The Hive & featured servers.\n• Your exact custom skin, cape, and 3D model are automatically preserved and forwarded.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )

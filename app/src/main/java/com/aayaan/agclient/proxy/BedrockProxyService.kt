@@ -126,7 +126,7 @@ class BedrockProxyService : Service() {
                 val targetSubMotd = if (config.targetIp.isNotBlank()) "§aTarget: ${config.targetIp}:${config.targetPort}" else "§eSet Target in AG App"
                 val pong = BedrockPong().apply {
                     edition("MCPE")
-                    motd("§bAG Client v2.9.7 §7[Proxy]")
+                    motd("§bAG Client v2.9.8 §7[Proxy]")
                     subMotd(targetSubMotd)
                     playerCount(1)
                     maximumPlayerCount(10)
@@ -255,7 +255,7 @@ class BedrockProxyService : Service() {
                     val effectiveProto = defaultCodec?.protocolVersion ?: 712
                     val effectiveVer = defaultCodec?.minecraftVersion ?: "1.21.20"
                     // Bedrock Unconnected Pong: Edition;MOTD;Protocol;Version;Players;MaxPlayers;GUID;SubMOTD;GameMode;GameModeNum;PortIPv4;PortIPv6;
-                    val motd = "MCPE;§bAG Client v2.9.7 §7[$targetName];$effectiveProto;$effectiveVer;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
+                    val motd = "MCPE;§bAG Client v2.9.8 §7[$targetName];$effectiveProto;$effectiveVer;1;10;$serverGuid;AG Client;Survival;1;$broadcastPort;$broadcastPort;"
                     val motdBytes = motd.toByteArray(Charsets.UTF_8)
 
                     val buffer = ByteBuffer.allocate(1 + 8 + 8 + 16 + 2 + motdBytes.size).apply {
@@ -499,7 +499,7 @@ class BedrockProxyService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("AG Client v2.9.7 (Active Proxy)")
+            .setContentTitle("AG Client v2.9.8 (Active Proxy)")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)

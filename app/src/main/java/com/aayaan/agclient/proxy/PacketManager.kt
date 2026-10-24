@@ -69,17 +69,15 @@ class PacketManager(
 
     private fun initializeProxyKeyPair() {
         try {
-            val keyGen = KeyPairGenerator.getInstance("EC")
-            try {
-                keyGen.initialize(ECGenParameterSpec("secp384r1"))
-            } catch (_: Exception) {
-                // Fallback to secp256r1 if 384-bit curve is unavailable
-                keyGen.initialize(ECGenParameterSpec("secp256r1"))
-            }
-            proxyKeyPair = keyGen.generateKeyPair()
-            Logger.i("PacketManager", "Generated MitM EC KeyPair (${proxyKeyPair?.public?.algorithm})")
+            proxyKeyPair = proxySession.authManager.deviceKeyPair
+            Logger.i("PacketManager", "Bound proxy session to persistent device EC KeyPair (${proxyKeyPair?.public?.algorithm})")
         } catch (e: Exception) {
-            Logger.w("PacketManager", "Failed to generate EC KeyPair, standard passthrough will be used: ${e.message}")
+            Logger.w("PacketManager", "Failed to load device KeyPair, generating fallback: ${e.message}")
+            try {
+                val keyGen = KeyPairGenerator.getInstance("EC")
+                keyGen.initialize(ECGenParameterSpec("secp384r1"))
+                proxyKeyPair = keyGen.generateKeyPair()
+            } catch (_: Exception) {}
         }
     }
 

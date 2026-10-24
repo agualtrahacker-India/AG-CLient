@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Badge(containerColor = ElectricPurple) {
                                         Text(
-                                            text = "v2.9.7",
+                                            text = "v2.9.8",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = TextPrimary
                                         )

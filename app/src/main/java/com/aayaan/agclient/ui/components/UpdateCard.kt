@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -16,12 +17,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aayaan.agclient.ui.theme.*
 import com.aayaan.agclient.updater.UpdateState
+import java.io.File
 
 @Composable
 fun UpdateCard(
     updateState: UpdateState,
+    currentVersion: String = "2.9.9",
     onDownloadUpdate: (String) -> Unit,
-    onInstallApk: (java.io.File) -> Unit,
+    onInstallApk: (File) -> Unit,
+    onOpenSettings: () -> Unit = {},
     onCheckUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -92,12 +96,12 @@ fun UpdateCard(
                 is UpdateState.Idle -> {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Version: 2.9.0-beta.1 (Beta 1 Connection Test)",
+                            text = "Installed Version: v$currentVersion",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextPrimary
                         )
                         Text(
-                            text = "Unlimited manual check button enabled + automatic background checks.",
+                            text = "Automatic background checks every 30m. Tap 'Check Now' to query immediately.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
@@ -125,7 +129,7 @@ fun UpdateCard(
                         ) {
                             Icon(Icons.Default.CloudDone, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(16.dp))
                             Text(
-                                text = "AG Client is up to date (${updateState.currentVersion})",
+                                text = "AG Client is up to date (v${updateState.currentVersion})",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = AccentGreen
                             )
@@ -178,12 +182,34 @@ fun UpdateCard(
                     }
                 }
                 is UpdateState.ReadyToInstall -> {
-                    Button(
-                        onClick = { onInstallApk(updateState.apkFile) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
-                    ) {
-                        Text("Install Downloaded APK", color = DarkBackground)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (updateState.requiresUnknownSourcePermission) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Security, contentDescription = null, tint = AccentYellow)
+                                Text(
+                                    text = "Android permission required: 'Install unknown apps'",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AccentYellow
+                                )
+                            }
+                            Button(
+                                onClick = onOpenSettings,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentYellow)
+                            ) {
+                                Text("Allow Unknown Apps in Settings", color = DarkBackground)
+                            }
+                        }
+                        Button(
+                            onClick = { onInstallApk(updateState.apkFile) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+                        ) {
+                            Text("Install Downloaded APK (${updateState.apkFile.name})", color = DarkBackground)
+                        }
                     }
                 }
                 is UpdateState.Error -> {

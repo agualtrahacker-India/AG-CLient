@@ -6,9 +6,11 @@ import com.aayaan.agclient.gui.InGameGuiManager
 import com.aayaan.agclient.modules.ModuleManager
 import com.aayaan.agclient.state.WorldStateTracker
 import com.aayaan.agclient.utils.Logger
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.cloudburstmc.protocol.bedrock.BedrockClientSession
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm
@@ -167,7 +169,11 @@ class PacketManager(
 
         // 3. Intercept Server Disconnect
         if (packet is DisconnectPacket) {
-            Logger.w("PacketManager", "Upstream server requested disconnect: ${packet.kickMessage}")
+            val kick = packet.kickMessage ?: "Unknown reason"
+            Logger.w("PacketManager", "[AUTH-ANALYSIS] Upstream server disconnected session: '$kick'")
+            if (kick.contains("authenticate", ignoreCase = true) || kick.contains("Xbox", ignoreCase = true) || kick.contains("Microsoft", ignoreCase = true)) {
+                Logger.e("PacketManager", "[AUTH-ANALYSIS] Server rejected authentication! Hint: Tap 'Run Auth Diagnostic' on Console tab or re-login in Xbox Auth tab.")
+            }
             serverSession.sendPacket(packet)
             proxySession.cleanup()
             return PacketSignal.HANDLED
@@ -244,36 +250,37 @@ class PacketManager(
     }
 
     private fun handleClientLoginPacket(packet: LoginPacket) {
-        Logger.i("PacketManager", "Intercepted LoginPacket (Proto: ${packet.protocolVersion})")
-        val outbound = prepareOutboundLoginPacket(packet)
-        proxySession.cachedLoginPacket = outbound
+        Logger.i("PacketManager", "[AUTH-ANALYSIS] Intercepted Client LoginPacket (Proto: ${packet.protocolVersion})")
 
-        // Extract client's public key from the identity certificate chain
+        // 1. Extract client's public key from the identity certificate chain
         val extractedKey = extractPublicKeyFromLoginPacket(packet)
         if (extractedKey != null) {
             clientPublicKey = extractedKey
-            Logger.i("PacketManager", "Extracted client public key for MitM derivation (${extractedKey.algorithm})")
+            Logger.i("PacketManager", "[AUTH-ANALYSIS] Extracted client EC public key (${extractedKey.algorithm}, Format: ${extractedKey.format})")
         } else {
-            Logger.w("PacketManager", "Could not extract client public key from LoginPacket. Using transparent handshake.")
+            Logger.w("PacketManager", "[AUTH-ANALYSIS] Client public key could not be extracted. Will attempt fallback.")
         }
 
-        // If upstream is already connected, forward LoginPacket immediately!
+        // 2. Prepare outbound LoginPacket (re-signing with Xbox Live Mojang chain if active)
+        val outbound = prepareOutboundLoginPacket(packet)
+        proxySession.cachedLoginPacket = outbound
+
+        // 3. If upstream is already connected, forward LoginPacket immediately!
         val upstream = proxySession.clientSession
         if (proxySession.isConnectedToUpstream && upstream != null && upstream.isConnected) {
             try {
                 upstream.sendPacketImmediately(outbound)
-                Logger.i("PacketManager", "Upstream already connected, forwarded player's LoginPacket immediately.")
+                Logger.i("PacketManager", "[AUTH-ANALYSIS] Upstream connected, transmitted outbound LoginPacket to server.")
             } catch (e: Exception) {
-                Logger.e("PacketManager", "Failed to forward LoginPacket to connected upstream: ${e.message}")
+                Logger.e("PacketManager", "[AUTH-ANALYSIS] Failed to forward LoginPacket: ${e.message}")
             }
         } else {
-            // Trigger upstream connection if not already running
             proxySession.connectUpstream()
         }
     }
 
     private fun handleUpstreamNetworkSettings(packet: NetworkSettingsPacket, clientSession: BedrockClientSession) {
-        Logger.i("PacketManager", "Upstream server replied with NetworkSettingsPacket (${packet.compressionAlgorithm})")
+        Logger.i("PacketManager", "[AUTH-ANALYSIS] Upstream server replied with NetworkSettingsPacket (${packet.compressionAlgorithm})")
         try {
             clientSession.setCompression(packet.compressionAlgorithm)
         } catch (e: Exception) {
@@ -284,12 +291,12 @@ class PacketManager(
         proxySession.cachedLoginPacket?.let { login ->
             val outbound = prepareOutboundLoginPacket(login)
             clientSession.sendPacketImmediately(outbound)
-            Logger.i("PacketManager", "Forwarded player's LoginPacket upstream.")
+            Logger.i("PacketManager", "[AUTH-ANALYSIS] Transmitted outbound LoginPacket to remote server.")
         }
     }
 
     private fun handleServerHandshakeRequest(packet: ServerToClientHandshakePacket, clientSession: BedrockClientSession) {
-        Logger.i("PacketManager", "Intercepted ServerToClientHandshakePacket from upstream server.")
+        Logger.i("PacketManager", "[AUTH-ANALYSIS] Intercepted ServerToClientHandshakePacket from upstream server.")
 
         val jwt = packet.jwt
         if (jwt.isNullOrBlank()) {
@@ -301,11 +308,9 @@ class PacketManager(
         try {
             val parts = jwt.split(".")
             if (parts.size >= 2) {
-                // Header (contains server public key in x5u)
                 val headerJsonStr = String(Base64.decode(parts[0], Base64.URL_SAFE or Base64.NO_WRAP), Charsets.UTF_8)
                 val headerObj = JsonParser.parseString(headerJsonStr).asJsonObject
 
-                // Payload (contains salt)
                 val payloadJsonStr = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP), Charsets.UTF_8)
                 val payloadObj = JsonParser.parseString(payloadJsonStr).asJsonObject
 
@@ -326,7 +331,7 @@ class PacketManager(
                             val enabled = enableSessionCipher(clientSession, upstreamSecret)
                             if (enabled) {
                                 isServerEncryptionEnabled = true
-                                Logger.i("PacketManager", "Activated AES encryption on upstream connection to server.")
+                                Logger.i("PacketManager", "[AUTH-ANALYSIS] Activated AES encryption on upstream connection to server.")
                             }
                         }
 
@@ -337,7 +342,7 @@ class PacketManager(
                                 setJwt(proxyHandshakeJwt)
                             }
                             serverSession.sendPacketImmediately(proxyHandshakePacket)
-                            Logger.i("PacketManager", "Crafted & transmitted MitM ServerToClientHandshakePacket to Minecraft client.")
+                            Logger.i("PacketManager", "[AUTH-ANALYSIS] Crafted & transmitted MitM ServerToClientHandshakePacket to Minecraft client (with JOSE signature).")
                             return
                         }
                     }
@@ -352,7 +357,7 @@ class PacketManager(
     }
 
     private fun handleClientHandshakeResponse(packet: ClientToServerHandshakePacket) {
-        Logger.i("PacketManager", "Intercepted ClientToServerHandshakePacket from Minecraft client.")
+        Logger.i("PacketManager", "[AUTH-ANALYSIS] Intercepted ClientToServerHandshakePacket from Minecraft client.")
 
         val cPubKey = clientPublicKey
         val kPair = proxyKeyPair
@@ -366,17 +371,19 @@ class PacketManager(
                     val enabled = enableSessionCipher(serverSession, downstreamSecret)
                     if (enabled) {
                         isClientEncryptionEnabled = true
-                        Logger.i("PacketManager", "Activated AES encryption on local Minecraft client session.")
+                        Logger.i("PacketManager", "[AUTH-ANALYSIS] Activated AES encryption on local Minecraft client session.")
                     }
                 }
             } catch (e: Exception) {
-                Logger.w("PacketManager", "Downstream cipher initialization failed: ${e.message}")
+                Logger.w("PacketManager", "[AUTH-ANALYSIS] Downstream cipher initialization failed: ${e.message}")
             }
+        } else {
+            Logger.w("PacketManager", "[AUTH-ANALYSIS] Downstream cipher bypassed: cPubKey=${cPubKey != null}, kPair=${kPair != null}, salt=${salt != null}")
         }
 
         // Forward handshake confirmation upstream to target server
         proxySession.clientSession?.sendPacketImmediately(packet)
-        Logger.i("PacketManager", "Forwarded ClientToServerHandshake upstream to target server.")
+        Logger.i("PacketManager", "[AUTH-ANALYSIS] Forwarded ClientToServerHandshake upstream to target server.")
     }
 
     // =========================================================================
@@ -420,7 +427,8 @@ class PacketManager(
                 initSign(privateKey)
                 update(signingInput.toByteArray(Charsets.US_ASCII))
             }
-            val sigBytes = signature.sign()
+            // ES384 in JWT requires 96-byte raw JOSE format (R||S), not DER!
+            val sigBytes = derToJose(signature.sign(), 48)
             val sigB64 = Base64.encodeToString(sigBytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
             "$signingInput.$sigB64"
@@ -466,32 +474,88 @@ class PacketManager(
 
     private fun extractPublicKeyFromLoginPacket(login: LoginPacket): PublicKey? {
         try {
-            val chainData = try {
-                val method = login.javaClass.getMethod("getChain")
-                method.invoke(login)
-            } catch (_: Exception) {
+            var rawChainObj: Any? = null
+            val candidateMethods = listOf("getChain", "getChainData", "getAuthData")
+            for (name in candidateMethods) {
                 try {
-                    val field = login.javaClass.getDeclaredField("chain")
-                    field.isAccessible = true
-                    field.get(login)
-                } catch (_: Exception) { null }
+                    val method = login.javaClass.getMethod(name)
+                    rawChainObj = method.invoke(login)
+                    if (rawChainObj != null) break
+                } catch (_: Exception) {}
+            }
+            if (rawChainObj == null) {
+                val candidateFields = listOf("chain", "chainData", "authData", "tokens")
+                for (name in candidateFields) {
+                    try {
+                        val field = login.javaClass.getDeclaredField(name)
+                        field.isAccessible = true
+                        rawChainObj = field.get(login)
+                        if (rawChainObj != null) break
+                    } catch (_: Exception) {}
+                }
+            }
+            if (rawChainObj == null) {
+                for (field in login.javaClass.declaredFields) {
+                    try {
+                        field.isAccessible = true
+                        val value = field.get(login)
+                        if (value is Iterable<*> || value is Array<*> || (value is CharSequence && value.contains("chain"))) {
+                            rawChainObj = value
+                            break
+                        }
+                    } catch (_: Exception) {}
+                }
             }
 
-            if (chainData is Iterable<*>) {
-                for (item in chainData) {
-                    val key = parseKeyFromJwtString(item?.toString())
-                    if (key != null) return key
-                }
-            } else if (chainData is Array<*>) {
-                for (item in chainData) {
-                    val key = parseKeyFromJwtString(item?.toString())
-                    if (key != null) return key
+            val tokens = mutableListOf<String>()
+            when (rawChainObj) {
+                is Iterable<*> -> rawChainObj.forEach { it?.let { tokens.add(it.toString()) } }
+                is Array<*> -> rawChainObj.forEach { it?.let { tokens.add(it.toString()) } }
+                is CharSequence -> {
+                    val str = rawChainObj.toString().trim()
+                    if (str.startsWith("{")) {
+                        try {
+                            val json = JsonParser.parseString(str).asJsonObject
+                            if (json.has("chain")) {
+                                json.getAsJsonArray("chain").forEach { tokens.add(it.asString) }
+                            }
+                        } catch (_: Exception) {}
+                    } else if (str.contains(".")) {
+                        tokens.add(str)
+                    }
                 }
             }
+
+            // In Bedrock's certificate chain:
+            // The client's public key is in the token containing "extraData" (the player identity claim)
+            // or the last non-CA token. The first token contains Mojang's Root CA key!
+            var fallbackKey: PublicKey? = null
+            for (token in tokens.reversed()) {
+                val key = parseKeyFromJwtString(token)
+                if (key != null) {
+                    fallbackKey = key
+                    if (tokenHasExtraData(token)) {
+                        return key
+                    }
+                }
+            }
+            if (fallbackKey != null) return fallbackKey
+
         } catch (e: Exception) {
             Logger.d("PacketManager", "extractPublicKeyFromLoginPacket error: ${e.message}")
         }
         return null
+    }
+
+    private fun tokenHasExtraData(jwt: String): Boolean {
+        return try {
+            val parts = jwt.split(".")
+            if (parts.size >= 2) {
+                val payloadJsonStr = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP), Charsets.UTF_8)
+                val payload = JsonParser.parseString(payloadJsonStr).asJsonObject
+                payload.has("extraData")
+            } else false
+        } catch (_: Exception) { false }
     }
 
     private fun parseKeyFromJwtString(jwt: String?): PublicKey? {
@@ -548,16 +612,42 @@ class PacketManager(
     }
 
     private fun getClientDataJwt(login: LoginPacket): String? {
-        return try {
-            val method = login.javaClass.getMethod("getExtra")
-            method.invoke(login)?.toString()
-        } catch (_: Exception) {
+        val candidateMethods = listOf("getExtra", "getClientData", "getSkinData")
+        for (name in candidateMethods) {
             try {
-                val field = login.javaClass.getDeclaredField("extra")
-                field.isAccessible = true
-                field.get(login)?.toString()
-            } catch (_: Exception) { null }
+                val method = login.javaClass.getMethod(name)
+                val res = method.invoke(login)
+                if (res != null) {
+                    val str = res.toString()
+                    if (str.contains(".")) return str
+                }
+            } catch (_: Exception) {}
         }
+        val candidateFields = listOf("extra", "clientData", "skinData", "extraJwt")
+        for (name in candidateFields) {
+            try {
+                val field = login.javaClass.getDeclaredField(name)
+                field.isAccessible = true
+                val res = field.get(login)
+                if (res != null) {
+                    val str = res.toString()
+                    if (str.contains(".")) return str
+                }
+            } catch (_: Exception) {}
+        }
+        for (field in login.javaClass.declaredFields) {
+            try {
+                field.isAccessible = true
+                val value = field.get(login)
+                if (value != null) {
+                    val str = value.toString()
+                    if (str.count { it == '.' } == 2 && str.length > 50) {
+                        return str
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return null
     }
 
     private fun reSignClientDataJwt(rawJwt: String, privateKey: PrivateKey): String? {
@@ -583,26 +673,97 @@ class PacketManager(
     }
 
     private fun setLoginChainAndExtra(login: LoginPacket, chainList: List<String>, extraJwt: String) {
-        try {
-            val setChain = login.javaClass.getMethod("setChain", List::class.java)
-            setChain.invoke(login, chainList)
-        } catch (_: Exception) {
-            try {
-                val field = login.javaClass.getDeclaredField("chain")
-                field.isAccessible = true
-                field.set(login, chainList)
-            } catch (_: Exception) {}
+        var chainSet = false
+        for (method in login.javaClass.methods) {
+            if (method.name.startsWith("set") && (method.name.contains("Chain", ignoreCase = true) || method.name.contains("Auth", ignoreCase = true))) {
+                val paramType = method.parameterTypes.firstOrNull() ?: continue
+                try {
+                    when {
+                        paramType.isAssignableFrom(List::class.java) -> {
+                            method.invoke(login, chainList)
+                            chainSet = true
+                            break
+                        }
+                        paramType == String::class.java -> {
+                            val chainJson = JsonObject().apply {
+                                val arr = JsonArray()
+                                chainList.forEach { arr.add(it) }
+                                add("chain", arr)
+                            }.toString()
+                            method.invoke(login, chainJson)
+                            chainSet = true
+                            break
+                        }
+                        paramType.name.contains("AsciiString") -> {
+                            val asciiClass = Class.forName("io.netty.util.AsciiString")
+                            val ofMethod = asciiClass.getMethod("of", CharSequence::class.java)
+                            val asciiList = chainList.map { ofMethod.invoke(null, it) }
+                            method.invoke(login, asciiList)
+                            chainSet = true
+                            break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
         }
 
-        try {
-            val setExtra = login.javaClass.getMethod("setExtra", String::class.java)
-            setExtra.invoke(login, extraJwt)
-        } catch (_: Exception) {
-            try {
-                val field = login.javaClass.getDeclaredField("extra")
-                field.isAccessible = true
-                field.set(login, extraJwt)
-            } catch (_: Exception) {}
+        if (!chainSet) {
+            for (field in login.javaClass.declaredFields) {
+                if (field.name.contains("chain", ignoreCase = true) || field.name.contains("auth", ignoreCase = true)) {
+                    try {
+                        field.isAccessible = true
+                        when {
+                            field.type.isAssignableFrom(List::class.java) -> field.set(login, chainList)
+                            field.type == String::class.java -> field.set(login, chainList.joinToString(","))
+                            field.type.name.contains("AsciiString") -> {
+                                val asciiClass = Class.forName("io.netty.util.AsciiString")
+                                val ofMethod = asciiClass.getMethod("of", CharSequence::class.java)
+                                val asciiList = chainList.map { ofMethod.invoke(null, it) }
+                                field.set(login, asciiList)
+                            }
+                        }
+                        break
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
+        var extraSet = false
+        for (method in login.javaClass.methods) {
+            if (method.name.startsWith("set") && (method.name.contains("Extra", ignoreCase = true) || method.name.contains("Skin", ignoreCase = true) || method.name.contains("ClientData", ignoreCase = true))) {
+                val paramType = method.parameterTypes.firstOrNull() ?: continue
+                try {
+                    if (paramType == String::class.java || paramType == CharSequence::class.java) {
+                        method.invoke(login, extraJwt)
+                        extraSet = true
+                        break
+                    } else if (paramType.name.contains("AsciiString")) {
+                        val asciiClass = Class.forName("io.netty.util.AsciiString")
+                        val ofMethod = asciiClass.getMethod("of", CharSequence::class.java)
+                        method.invoke(login, ofMethod.invoke(null, extraJwt))
+                        extraSet = true
+                        break
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        if (!extraSet) {
+            for (field in login.javaClass.declaredFields) {
+                if (field.name.contains("extra", ignoreCase = true) || field.name.contains("skin", ignoreCase = true) || field.name.contains("clientData", ignoreCase = true)) {
+                    try {
+                        field.isAccessible = true
+                        if (field.type == String::class.java || field.type == CharSequence::class.java) {
+                            field.set(login, extraJwt)
+                        } else if (field.type.name.contains("AsciiString")) {
+                            val asciiClass = Class.forName("io.netty.util.AsciiString")
+                            val ofMethod = asciiClass.getMethod("of", CharSequence::class.java)
+                            field.set(login, ofMethod.invoke(null, extraJwt))
+                        }
+                        break
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 
@@ -612,7 +773,15 @@ class PacketManager(
 
         if (!authManager.liveXstsToken.isNullOrBlank() && kPair != null) {
             try {
-                val mojangChainJson = authManager.cachedMinecraftChain
+                // Ensure Mojang chain is ready (synchronously awaits up to 4s if background fetch was still pending)
+                var mojangChainJson = authManager.cachedMinecraftChain
+                if (mojangChainJson.isNullOrBlank()) {
+                    Logger.i("PacketManager", "[AUTH-ANALYSIS] Mojang chain not in memory, awaiting background fetch...")
+                    mojangChainJson = runBlocking {
+                        authManager.ensureChainReady(4000)
+                    }
+                }
+
                 if (!mojangChainJson.isNullOrBlank()) {
                     val chainArray = JsonParser.parseString(mojangChainJson).asJsonArray
                     val chainList = mutableListOf<String>()
@@ -629,9 +798,13 @@ class PacketManager(
                             protocolVersion = incoming.protocolVersion
                         }
                         setLoginChainAndExtra(outbound, chainList, reSignedClientDataJwt)
-                        Logger.i("PacketManager", "Prepared official Mojang-signed LoginPacket for The Hive (Preserving Minecraft skin & model).")
+                        Logger.i("PacketManager", "[AUTH-ANALYSIS] Prepared official Mojang-signed LoginPacket for The Hive (Preserving Minecraft skin & model).")
                         return outbound
+                    } else {
+                        Logger.w("PacketManager", "[AUTH-ANALYSIS] Missing components: chainTokens=${chainList.size}, clientDataSigned=${reSignedClientDataJwt != null}")
                     }
+                } else {
+                    Logger.w("PacketManager", "[AUTH-ANALYSIS] Mojang chain unavailable. Passing original client LoginPacket.")
                 }
             } catch (e: Exception) {
                 Logger.w("PacketManager", "Error preparing authenticated LoginPacket: ${e.message}, using incoming packet.")

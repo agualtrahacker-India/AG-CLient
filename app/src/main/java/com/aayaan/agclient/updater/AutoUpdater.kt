@@ -5,8 +5,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.aayaan.agclient.MainActivity
@@ -32,7 +35,7 @@ sealed class UpdateState {
         val apkSize: Long
     ) : UpdateState()
     data class Downloading(val progress: Float) : UpdateState()
-    data class ReadyToInstall(val apkFile: File) : UpdateState()
+    data class ReadyToInstall(val apkFile: File, val requiresUnknownSourcePermission: Boolean = false) : UpdateState()
     data class UpToDate(val currentVersion: String) : UpdateState()
     data class Error(val message: String) : UpdateState()
 }
@@ -47,15 +50,14 @@ class AutoUpdater(private val context: Context) {
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     val currentVersion: String = try {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.9.0-beta.1"
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "2.9.9"
     } catch (_: Exception) {
-        "2.9.0-beta.1"
+        "2.9.9"
     }
 
     companion object {
         const val REPO_OWNER = "agualtrahacker-India"
-        const val REPO_NAME = "AG-CLient"
-        const val API_LATEST_RELEASE = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+        const val REPO_NAME = "AG-Client"
         const val NOTIFICATION_CHANNEL_ID = "ag_client_updates_channel"
         const val NOTIFICATION_ID_UPDATE = 4001
         const val PREF_LAST_CHECK = "last_check_timestamp"
@@ -99,24 +101,25 @@ class AutoUpdater(private val context: Context) {
                 prefs.edit().putLong(PREF_LAST_CHECK, now).apply()
 
                 if (!silent) _updateState.value = UpdateState.Checking
-                Logger.i("AutoUpdater", "Checking GitHub for updates (rate-limit free mode)...")
+                Logger.i("AutoUpdater", "Checking GitHub for updates (Fastly CDN + GitHub Releases)...")
 
                 var foundVersion: String? = null
                 var foundDownloadUrl: String? = null
                 var foundReleaseNotes = ""
                 var foundApkSize = 0L
 
-                // 1. Unlimited Strategy 1: GitHub Raw Content (Fastly CDN, 0 rate limit)
+                // 1. Primary Strategy: GitHub Raw Content (Fastly CDN with timestamp cache-buster)
                 val rawUrls = listOf(
-                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/connection-test/version.json",
-                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/version.json"
+                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/connection-test/version.json?t=$now",
+                    "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/version.json?t=$now"
                 )
                 for (rawUrl in rawUrls) {
                     try {
                         val conn = URL(rawUrl).openConnection() as HttpURLConnection
-                        conn.connectTimeout = 4000
-                        conn.readTimeout = 4000
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
                         conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
+                        conn.setRequestProperty("Cache-Control", "no-cache")
                         if (conn.responseCode == 200) {
                             val body = conn.inputStream.bufferedReader().use { it.readText() }
                             val json = JsonParser.parseString(body).asJsonObject
@@ -128,17 +131,19 @@ class AutoUpdater(private val context: Context) {
                                 break
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Logger.d("AutoUpdater", "Fastly CDN check failed for $rawUrl: ${e.message}")
+                    }
                 }
 
-                // 2. Unlimited Strategy 2: GitHub Releases Web Redirect (0 rate limit)
+                // 2. Fallback: GitHub Releases Web Redirect (0 rate limit)
                 if (foundVersion == null) {
                     try {
                         val webUrl = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
                         val conn = URL(webUrl).openConnection() as HttpURLConnection
                         conn.instanceFollowRedirects = false
-                        conn.connectTimeout = 5000
-                        conn.readTimeout = 5000
+                        conn.connectTimeout = 6000
+                        conn.readTimeout = 6000
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0 AG-Client-Android")
                         val responseCode = conn.responseCode
                         if (responseCode == 302 || responseCode == 301) {
@@ -147,7 +152,7 @@ class AutoUpdater(private val context: Context) {
                                 val tag = location.substringAfterLast("/releases/tag/").trim()
                                 val cleanTag = tag.removePrefix("v").trim()
                                 foundVersion = cleanTag
-                                foundDownloadUrl = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/AG-Client-$tag-release.apk"
+                                foundDownloadUrl = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/app-release.apk"
                                 foundReleaseNotes = "New release $tag is available on GitHub."
                                 Logger.i("AutoUpdater", "Discovered latest release via GitHub web redirect: $tag")
                             }
@@ -160,9 +165,10 @@ class AutoUpdater(private val context: Context) {
                 // 3. Fallback: GitHub REST API
                 if (foundVersion == null) {
                     try {
-                        val conn = URL(API_LATEST_RELEASE).openConnection() as HttpURLConnection
-                        conn.connectTimeout = 5000
-                        conn.readTimeout = 5000
+                        val apiUrl = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+                        val conn = URL(apiUrl).openConnection() as HttpURLConnection
+                        conn.connectTimeout = 6000
+                        conn.readTimeout = 6000
                         conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
                         conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
                         if (conn.responseCode == 200) {
@@ -191,7 +197,7 @@ class AutoUpdater(private val context: Context) {
                 // Evaluate Result
                 val targetVer = foundVersion
                 if (targetVer != null) {
-                    val finalDownloadUrl = foundDownloadUrl ?: "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
+                    val finalDownloadUrl = foundDownloadUrl ?: "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/v$targetVer/app-release.apk"
                     if (isNewerVersion(targetVer, currentVersion)) {
                         _updateState.value = UpdateState.UpdateAvailable(
                             version = targetVer,
@@ -262,52 +268,57 @@ class AutoUpdater(private val context: Context) {
         scope.launch {
             try {
                 _updateState.value = UpdateState.Downloading(0.0f)
-                Logger.i("AutoUpdater", "Downloading APK update from $downloadUrl...")
+                Logger.i("AutoUpdater", "Starting APK update download from: $downloadUrl")
 
-                val updateDir = File(context.cacheDir, "updates").apply { if (!exists()) mkdirs() }
+                // Target downloads directory (external or internal fallback)
+                val updateDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    ?: File(context.cacheDir, "updates")
+                if (!updateDir.exists()) updateDir.mkdirs()
+
                 val apkFile = File(updateDir, "AG-Client-update.apk")
                 if (apkFile.exists()) apkFile.delete()
 
-                val url = URL(downloadUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.instanceFollowRedirects = true
-                conn.connectTimeout = 15000
-                conn.readTimeout = 30000
-
-                // Follow redirects (GitHub assets redirect to AWS S3)
-                var currentConn = conn
-                var responseCode = currentConn.responseCode
-                while (responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                    responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                    responseCode == HttpURLConnection.HTTP_SEE_OTHER) {
-                    val newUrl = currentConn.getHeaderField("Location")
-                    currentConn = URL(newUrl).openConnection() as HttpURLConnection
-                    responseCode = currentConn.responseCode
+                // List of candidate URLs to try if primary URL returns 404
+                val candidateUrls = mutableListOf(downloadUrl)
+                if (downloadUrl.contains("/releases/download/")) {
+                    val tag = downloadUrl.substringAfter("/releases/download/").substringBefore("/")
+                    val urlAppRelease = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/app-release.apk"
+                    val urlNamedRelease = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/AG-Client-$tag-release.apk"
+                    if (!candidateUrls.contains(urlAppRelease)) candidateUrls.add(urlAppRelease)
+                    if (!candidateUrls.contains(urlNamedRelease)) candidateUrls.add(urlNamedRelease)
                 }
 
-                val totalBytes = currentConn.contentLengthLong
-                var downloadedBytes = 0L
+                var downloadSuccess = false
+                var lastError: Exception? = null
 
-                currentConn.inputStream.use { input ->
-                    FileOutputStream(apkFile).use { output ->
-                        val buffer = ByteArray(8192)
-                        var read: Int
-                        while (input.read(buffer).also { read = it } != -1) {
-                            output.write(buffer, 0, read)
-                            downloadedBytes += read
-                            if (totalBytes > 0) {
-                                val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
-                                _updateState.value = UpdateState.Downloading(progress)
-                            }
+                for (targetUrl in candidateUrls) {
+                    try {
+                        Logger.i("AutoUpdater", "Attempting download: $targetUrl")
+                        val downloaded = downloadFileWithRedirects(targetUrl, apkFile) { progress ->
+                            _updateState.value = UpdateState.Downloading(progress)
                         }
+                        if (downloaded && apkFile.exists() && apkFile.length() > 1_000_000L) {
+                            downloadSuccess = true
+                            Logger.i("AutoUpdater", "Download completed (${apkFile.length() / (1024 * 1024)} MB): ${apkFile.absolutePath}")
+                            break
+                        }
+                    } catch (e: Exception) {
+                        lastError = e
+                        Logger.w("AutoUpdater", "Download attempt failed for $targetUrl: ${e.message}")
                     }
                 }
 
-                Logger.i("AutoUpdater", "APK downloaded successfully to ${apkFile.absolutePath}")
-                _updateState.value = UpdateState.ReadyToInstall(apkFile)
+                if (!downloadSuccess) {
+                    throw lastError ?: Exception("Unable to download APK from available release URLs.")
+                }
 
-                // Prompt user to install
+                // Check installation permissions on Android 8+
+                val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        !context.packageManager.canRequestPackageInstalls()
+
+                _updateState.value = UpdateState.ReadyToInstall(apkFile, needsPermission)
+
+                // Trigger package installation intent
                 installApk(apkFile)
 
             } catch (e: Exception) {
@@ -317,8 +328,96 @@ class AutoUpdater(private val context: Context) {
         }
     }
 
+    private fun downloadFileWithRedirects(
+        initialUrl: String,
+        destinationFile: File,
+        onProgress: (Float) -> Unit
+    ): Boolean {
+        var currentUrl = initialUrl
+        var redirects = 0
+        val maxRedirects = 8
+
+        while (redirects < maxRedirects) {
+            val url = URL(currentUrl)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 15000
+            conn.readTimeout = 30000
+            conn.setRequestProperty("User-Agent", "AG-Client-Android/$currentVersion")
+            conn.setRequestProperty("Accept", "*/*")
+
+            val responseCode = conn.responseCode
+            Logger.d("AutoUpdater", "HTTP $responseCode from $currentUrl")
+
+            if (responseCode in 300..399) {
+                val location = conn.getHeaderField("Location")
+                    ?: throw Exception("HTTP redirect ($responseCode) missing Location header")
+                currentUrl = if (location.startsWith("http")) location else URL(url, location).toString()
+                conn.disconnect()
+                redirects++
+                continue
+            }
+
+            if (responseCode !in 200..299) {
+                conn.disconnect()
+                throw Exception("HTTP $responseCode from server: ${conn.responseMessage}")
+            }
+
+            val totalBytes = conn.contentLengthLong
+            var downloadedBytes = 0L
+
+            conn.inputStream.use { input ->
+                FileOutputStream(destinationFile).use { output ->
+                    val buffer = ByteArray(16384)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read
+                        if (totalBytes > 0) {
+                            val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
+                            onProgress(progress)
+                        }
+                    }
+                }
+            }
+            conn.disconnect()
+            return true
+        }
+        throw Exception("Too many HTTP redirects (exceeded $maxRedirects)")
+    }
+
+    fun openUnknownSourcesSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                Logger.i("AutoUpdater", "Opened unknown sources settings.")
+            } catch (e: Exception) {
+                Logger.e("AutoUpdater", "Could not open unknown sources settings", e)
+            }
+        }
+    }
+
     fun installApk(apkFile: File) {
         try {
+            if (!apkFile.exists() || apkFile.length() < 100_000L) {
+                _updateState.value = UpdateState.Error("Downloaded APK file is incomplete or missing.")
+                return
+            }
+
+            // Check if user needs to grant REQUEST_INSTALL_PACKAGES on Android 8.0 - 16
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    Logger.w("AutoUpdater", "REQUEST_INSTALL_PACKAGES permission not granted. Prompting user settings.")
+                    openUnknownSourcesSettings()
+                    _updateState.value = UpdateState.ReadyToInstall(apkFile, requiresUnknownSourcePermission = true)
+                    return
+                }
+            }
+
             val contentUri: Uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -327,15 +426,82 @@ class AutoUpdater(private val context: Context) {
 
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(contentUri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            }
+
+            // Grant read permission to all potential package installers
+            val resolveInfoList = context.packageManager.queryIntentActivities(
+                installIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+            for (resolveInfo in resolveInfoList) {
+                val packageName = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(packageName, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            // Explicitly grant to common OEM installers (Samsung, Google, AOSP)
+            val knownInstallers = listOf(
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller",
+                "com.samsung.android.packageinstaller"
+            )
+            for (pkg in knownInstallers) {
+                try {
+                    context.grantUriPermission(pkg, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (_: Exception) {}
             }
 
             context.startActivity(installIntent)
-            Logger.i("AutoUpdater", "Launched Android package installer intent.")
+            Logger.i("AutoUpdater", "Launched Android package installer for ${apkFile.name} via FileProvider.")
+            _updateState.value = UpdateState.ReadyToInstall(apkFile, requiresUnknownSourcePermission = false)
+
         } catch (e: Exception) {
             Logger.e("AutoUpdater", "Failed to launch package installer", e)
             _updateState.value = UpdateState.Error("Install launch failed: ${e.message}")
         }
+    }
+
+    fun runUpdaterDiagnostic(): String {
+        val sb = StringBuilder()
+        sb.append("=== AG CLIENT AUTO-UPDATER DIAGNOSTIC ===\n")
+        sb.append("  ✔ Current App Version: v$currentVersion\n")
+        sb.append("  ✔ Target Package: ${context.packageName}\n")
+
+        val canInstall = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else true
+        sb.append(if (canInstall) "  ✔ Install Unknown Apps Permission: GRANTED\n" else "  ⚠ Install Unknown Apps Permission: NOT GRANTED (Requires user toggle in Settings)\n")
+
+        val updateDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: File(context.cacheDir, "updates")
+        sb.append("  ✔ Download Directory: ${updateDir.absolutePath} (Writable: ${updateDir.canWrite()})\n")
+
+        val testFile = File(updateDir, "test_perm.tmp")
+        try {
+            testFile.writeText("test")
+            testFile.delete()
+            sb.append("  ✔ File System Write Probe: OK\n")
+        } catch (e: Exception) {
+            sb.append("  ❌ File System Write Probe: FAILED (${e.message})\n")
+        }
+
+        try {
+            val dummyApk = File(updateDir, "dummy_check.apk").apply {
+                if (!exists()) writeBytes(ByteArray(1024))
+            }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dummyApk)
+            dummyApk.delete()
+            sb.append("  ✔ FileProvider Content URI Generation: OK ($uri)\n")
+        } catch (e: Exception) {
+            sb.append("  ❌ FileProvider Content URI: FAILED (${e.message})\n")
+        }
+
+        sb.append("========================================\n")
+        val report = sb.toString()
+        Logger.diag(report)
+        return report
     }
 
     fun isNewerVersion(remoteVersion: String, localVersion: String): Boolean {
@@ -344,7 +510,7 @@ class AutoUpdater(private val context: Context) {
 
         if (cleanRemote.equals(cleanLocal, ignoreCase = true)) return false
 
-        // Extract numeric segments (e.g. [2, 0, 1] from "2.0.1" or "2.0.1-beta")
+        // Extract numeric segments (e.g. [2, 9, 9] from "2.9.9")
         val rMajorMinor = cleanRemote.substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
         val lMajorMinor = cleanLocal.substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
 
@@ -356,19 +522,12 @@ class AutoUpdater(private val context: Context) {
             if (r < l) return false
         }
 
-        // If numeric components are identical (e.g. "2.0" vs "2.0-beta"):
-        // A release without a hyphen suffix is newer than a pre-release version
         val rHasPreRelease = cleanRemote.contains("-")
         val lHasPreRelease = cleanLocal.contains("-")
 
-        if (!rHasPreRelease && lHasPreRelease) {
-            return true // e.g. "2.0" is newer than "2.0-beta"
-        }
-        if (rHasPreRelease && !lHasPreRelease) {
-            return false // e.g. "2.0-beta" is not newer than "2.0"
-        }
+        if (!rHasPreRelease && lHasPreRelease) return true
+        if (rHasPreRelease && !lHasPreRelease) return false
 
-        // If both have pre-releases (e.g. "2.0-beta.2" vs "2.0-beta.1"):
         if (rHasPreRelease && lHasPreRelease) {
             val rPre = cleanRemote.substringAfter("-")
             val lPre = cleanLocal.substringAfter("-")

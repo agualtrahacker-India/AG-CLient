@@ -144,9 +144,11 @@ class XboxAuthManager(private val context: Context) {
             val days = getDaysRemainingInSession()
             Logger.i("XboxAuth", "Loaded cached session for $gamertag ($days days remaining in 90-day cycle).")
 
-            // Auto-refresh token in background on startup if needed
+            // Auto-refresh token and pre-fetch Mojang chain in background on startup
             scope.launch {
                 refreshTokensIfNeeded()
+                val pubKeyB64 = Base64.encodeToString(deviceKeyPair.public.encoded, Base64.NO_WRAP)
+                getOrFetchMinecraftChain(pubKeyB64)
             }
         }
     }
@@ -489,6 +491,28 @@ class XboxAuthManager(private val context: Context) {
             Logger.e("XboxAuth", "Failed to fetch Mojang certificate chain", e)
         }
         return@withContext null
+    }
+
+    fun prefetchMojangChain() {
+        if (!liveXstsToken.isNullOrBlank() || prefs.getString("xsts_token", null) != null) {
+            scope.launch {
+                val pubKeyB64 = Base64.encodeToString(deviceKeyPair.public.encoded, Base64.NO_WRAP)
+                getOrFetchMinecraftChain(pubKeyB64)
+            }
+        }
+    }
+
+    suspend fun ensureChainReady(timeoutMs: Long = 4000): String? {
+        val pubKeyB64 = Base64.encodeToString(deviceKeyPair.public.encoded, Base64.NO_WRAP)
+        val cached = cachedMinecraftChain ?: prefs.getString("minecraft_chain", null)
+        val cachedPubKey = prefs.getString("minecraft_chain_pubkey", null)
+        if (!cached.isNullOrBlank() && cachedPubKey == pubKeyB64) {
+            cachedMinecraftChain = cached
+            return cached
+        }
+        return withTimeoutOrNull(timeoutMs) {
+            getOrFetchMinecraftChain(pubKeyB64)
+        }
     }
 
     suspend fun runAuthDiagnostic(): String = withContext(Dispatchers.IO) {

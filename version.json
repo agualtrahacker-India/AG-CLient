@@ -1,6 +1,6 @@
 {
-  "version": "2.9.8",
-  "versionCode": 18,
-  "downloadUrl": "https://github.com/agualtrahacker-India/AG-CLient/releases/download/v2.9.8/AG-Client-v2.9.8-release.apk",
-  "releaseNotes": "v2.9.8: Persistent device KeyPair architecture, automatic 90-day background token tracking, dedicated in-console Auth Diagnostic probe, and protocol 2193 codec auto-synthesis."
+  "version": "2.9.9",
+  "versionCode": 19,
+  "downloadUrl": "https://github.com/agualtrahacker-India/AG-Client/releases/download/v2.9.9/app-release.apk",
+  "releaseNotes": "v2.9.9: Hardened Xbox Live & Mojang authentication pipeline (pre-fetched Mojang chain, 96-byte JOSE ES384 handshake signature fix, multi-layer client EC key extraction), Auto-Updater download & Android 8-16 unknown app install permission support, and Console Updater Diagnostic probe."
 }

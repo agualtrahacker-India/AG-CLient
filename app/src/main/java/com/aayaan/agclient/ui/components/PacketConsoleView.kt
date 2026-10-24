@@ -42,6 +42,7 @@ fun PacketConsoleView(
 
     var isRunningDiag by remember { mutableStateOf(false) }
     var isRunningAuthDiag by remember { mutableStateOf(false) }
+    var isRunningUpdaterDiag by remember { mutableStateOf(false) }
     var lastDiagSummary by remember { mutableStateOf("") }
     var selectedFeedback by remember { mutableStateOf("") }
 
@@ -202,6 +203,36 @@ fun PacketConsoleView(
                             Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = DarkBackground, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Run Auth Diagnostic", color = DarkBackground, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+
+                    // 3. Updater Diagnostic
+                    Button(
+                        onClick = {
+                            if (isRunningUpdaterDiag) return@Button
+                            isRunningUpdaterDiag = true
+                            coroutineScope.launch {
+                                Logger.diag("Running Auto-Updater & Install Permissions Diagnostics...")
+                                val app = context.applicationContext as? AGClientApplication
+                                val updater = app?.autoUpdater
+                                val result = updater?.runUpdaterDiagnostic() ?: "AutoUpdater not available"
+                                isRunningUpdaterDiag = false
+                                Toast.makeText(context, "Updater diagnostic complete!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isRunningUpdaterDiag) DarkCard else AccentGreen),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp),
+                        enabled = !isRunningUpdaterDiag
+                    ) {
+                        if (isRunningUpdaterDiag) {
+                            CircularProgressIndicator(color = DarkBackground, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Testing...", color = DarkBackground, style = MaterialTheme.typography.labelSmall)
+                        } else {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = DarkBackground, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Run Updater Diagnostic", color = DarkBackground, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
 
